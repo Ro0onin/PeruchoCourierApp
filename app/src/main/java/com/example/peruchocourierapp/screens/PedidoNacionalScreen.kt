@@ -1,5 +1,11 @@
 package com.example.peruchocourierapp.screens
 
+import androidx.compose.animation.core.tween
+
+import androidx.compose.animation.core.FastOutSlowInEasing
+
+import androidx.compose.animation.core.Animatable
+
 import android.location.Location
 import android.net.Uri
 import android.graphics.Bitmap
@@ -55,6 +61,7 @@ import retrofit2.Response
 import java.io.File
 import java.io.FileOutputStream
 
+
 private val Dark = Color(0xFF1A1A1A)
 private val Red = Color(0xFFE02020)
 private val Green = Color(0xFF22C55E)
@@ -91,6 +98,7 @@ fun PedidoNacionalScreen(navController: NavController) {
     var ruta by remember { mutableStateOf<List<LatLng>>(emptyList()) }
     var distanciaKm by remember { mutableDoubleStateOf(0.0) }
     var duracionMin by remember { mutableStateOf(0) }
+
 
     var errorMessage by remember { mutableStateOf("") }
     var isSubmitting by remember { mutableStateOf(false) }
@@ -331,16 +339,6 @@ fun PedidoNacionalScreen(navController: NavController) {
                 onClick = { selectedVehicle = "Van / Minivan" }
             )
 
-            VehicleCard(
-                icon = R.drawable.bus,
-                name = "Camión",
-                desc = "Más de 100 kg. Carga pesada o mudanzas completas.",
-                price = calcularPrecioVehiculo("Camión", distanciaKm),
-                selected = selectedVehicle == "Camión",
-                enabled = true,
-                onClick = { selectedVehicle = "Camión" }
-            )
-
             ZoneNote()
 
             if (distanciaKm > 0.0) {
@@ -455,7 +453,6 @@ fun PedidoNacionalScreen(navController: NavController) {
                                             "Motorizado" -> "motorizado"
                                             "Auto / Sedan" -> "auto"
                                             "Van / Minivan" -> "van"
-                                            "Camión" -> "camion"
                                             else -> "motorizado"
                                         }
                                     ),
@@ -714,9 +711,54 @@ private fun MiniMapPedido(
     dropoffLat: Double,
     dropoffLng: Double,
     ruta: List<LatLng>,
-    cameraPositionState: CameraPositionState
+    cameraPositionState: CameraPositionState,
+    animationDurationMs: Int = 2600
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    val progress = remember { Animatable(0f) }
+
+    LaunchedEffect(ruta) {
+        if (ruta.size >= 2) {
+            progress.snapTo(0f)
+            progress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = if (ruta.size > 120) 3400 else animationDurationMs,
+                    easing = FastOutSlowInEasing
+                )
+            )
+        } else {
+            progress.snapTo(0f)
+        }
+    }
+
+    val puntosVisibles = remember(ruta, progress.value) {
+        if (ruta.size < 2) {
+            emptyList()
+        } else {
+            val total = ruta.size
+            val posicion = (progress.value * (total - 1)).coerceIn(0f, (total - 1).toFloat())
+            val index = posicion.toInt().coerceIn(0, total - 1)
+            val fraccion = posicion - index
+
+            val base = ruta.take(index + 1).toMutableList()
+
+            if (index < total - 1) {
+                val desde = ruta[index]
+                val hasta = ruta[index + 1]
+
+                val puntoInterpolado = LatLng(
+                    desde.latitude + (hasta.latitude - desde.latitude) * fraccion,
+                    desde.longitude + (hasta.longitude - desde.longitude) * fraccion
+                )
+
+                base.add(puntoInterpolado)
+            }
+
+            base
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -728,7 +770,12 @@ private fun MiniMapPedido(
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
             cameraPositionState = cameraPositionState,
-            properties = MapProperties(isMyLocationEnabled = false)
+            properties = MapProperties(isMyLocationEnabled = false),
+            uiSettings = MapUiSettings(
+                zoomControlsEnabled = false,
+                myLocationButtonEnabled = false,
+                mapToolbarEnabled = false
+            )
         ) {
             if (pickupLat != 0.0 && pickupLng != 0.0) {
                 Marker(
@@ -743,7 +790,11 @@ private fun MiniMapPedido(
                 )
             }
 
-            if (dropoffLat != 0.0 && dropoffLng != 0.0) {
+            if (
+                dropoffLat != 0.0 &&
+                dropoffLng != 0.0 &&
+                (ruta.isEmpty() || progress.value >= 0.92f)
+            ) {
                 Marker(
                     state = MarkerState(LatLng(dropoffLat, dropoffLng)),
                     title = "Entrega",
@@ -756,11 +807,26 @@ private fun MiniMapPedido(
                 )
             }
 
-            if (ruta.isNotEmpty()) {
+            if (puntosVisibles.size >= 2) {
                 Polyline(
-                    points = ruta,
+                    points = puntosVisibles,
+                    color = Red.copy(alpha = 0.22f),
+                    width = 18f,
+                    zIndex = 0f
+                )
+
+                Polyline(
+                    points = puntosVisibles,
                     color = Red,
-                    width = 6f
+                    width = 8f,
+                    zIndex = 1f
+                )
+
+                Polyline(
+                    points = puntosVisibles,
+                    color = Color.White.copy(alpha = 0.45f),
+                    width = 3f,
+                    zIndex = 2f
                 )
             }
         }
@@ -903,6 +969,20 @@ private fun VehicleCard(
                 lineHeight = 14.sp,
                 fontWeight = if (enabled) FontWeight.Normal else FontWeight.Bold
             )
+            if (enabled) {
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = when (name) {
+                        "Motorizado" -> "✓ S/ 9 tarifa plana hasta 15 km"
+                        else -> ""
+                    },
+                    color = Color(0xFF22C55E),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
 
         Column(horizontalAlignment = Alignment.End) {
@@ -1070,7 +1150,7 @@ private fun calcularPrecioVehiculo(
 ): Double {
     return when (vehiculo) {
         "Motorizado" -> if (distanciaKm <= 15.0) 9.0 else 9.0 + ((distanciaKm - 15.0) * 1.0)
-        "Auto / Sedan" -> if (distanciaKm <= 15.0) 15.0 else 15.0 + ((distanciaKm - 15.0) * 1.6)
+        "Auto / Sedan" -> if (distanciaKm <= 15.0) 20.0 else 20.0 + ((distanciaKm - 15.0) * 1.6)
         "Van / Minivan" -> if (distanciaKm <= 15.0) 35.0 else 35.0 + ((distanciaKm - 15.0) * 3.0)
         "Camión" -> if (distanciaKm <= 15.0) 80.0 else 80.0 + ((distanciaKm - 15.0) * 5.0)
         else -> 9.0
@@ -1144,8 +1224,7 @@ private fun PackageSizeSelector(
     val sizes = listOf(
         "Pequeño - hasta 5 kg",
         "Mediano - 5 a 20 kg",
-        "Grande - 20 a 100 kg",
-        "Carga pesada - más de 100 kg"
+        "Grande - 20 a 100 kg"
     )
 
     ExposedDropdownMenuBox(

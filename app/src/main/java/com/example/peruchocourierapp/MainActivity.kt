@@ -38,6 +38,7 @@ import com.example.peruchocourierapp.screens.PerfilRepartidorScreen
 import com.example.peruchocourierapp.screens.MisEntregasScreen
 import android.content.pm.PackageManager
 import android.util.Log
+import com.example.peruchocourierapp.screens.ChatPedidoScreen
 import com.example.peruchocourierapp.screens.SeguimientoPedidoClienteScreen
 import com.example.peruchocourierapp.screens.SeleccionarPedidoSeguimientoScreen
 import com.example.peruchocourierapp.screens.SplashScreen
@@ -169,6 +170,16 @@ class MainActivity : ComponentActivity() {
             }
             composable("splash") {
                 SplashScreen(navController)
+            }
+            composable("chat_pedido/{orderId}/{receiverEmail}") { backStackEntry ->
+                val orderId = backStackEntry.arguments?.getString("orderId")?.toIntOrNull() ?: 0
+                val receiverEmail = backStackEntry.arguments?.getString("receiverEmail") ?: ""
+
+                ChatPedidoScreen(
+                    navController = navController,
+                    orderId = orderId,
+                    receiverEmail = receiverEmail
+                )
             }
         }
     }

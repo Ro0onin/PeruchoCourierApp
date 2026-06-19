@@ -1,7 +1,10 @@
 package com.example.peruchocourierapp.screens
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -18,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -26,16 +30,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.window.Dialog
 import com.example.peruchocourierapp.SessionManager
 import com.example.peruchocourierapp.api.RetrofitClient
 import com.example.peruchocourierapp.models.ActiveOrderResponse
 import com.example.peruchocourierapp.models.BasicResponse
 import com.example.peruchocourierapp.models.Order
-import com.example.peruchocourierapp.utils.obtenerRuta
+import com.example.peruchocourierapp.services.LocationForegroundService
+import com.example.peruchocourierapp.utils.obtenerRutaCompleta
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.*
 import kotlinx.coroutines.Dispatchers
@@ -44,8 +53,8 @@ import kotlinx.coroutines.withContext
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import coil.compose.AsyncImage
-import androidx.compose.ui.layout.ContentScale
+import com.example.peruchocourierapp.models.DriverLocationResponse
+
 private val DriverBlue = Color(0xFF1A4FBF)
 private val DriverBg = Color(0xFFF4F6FB)
 private val DriverText = Color(0xFF1A2340)
@@ -53,6 +62,7 @@ private val DriverMuted = Color(0xFF6B7A99)
 private val DriverBorder = Color(0xFFE8ECF4)
 private val DriverGreen = Color(0xFF22C55E)
 private val DriverRed = Color(0xFFE02020)
+private val LimaDefault = LatLng(-12.0464, -77.0428)
 
 private fun normalizarEstadoPedido(estado: String?): String {
     return when ((estado ?: "").trim().lowercase()) {
@@ -62,6 +72,7 @@ private fun normalizarEstadoPedido(estado: String?): String {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PedidoEnCursoScreen(
     navController: NavController,
@@ -84,7 +95,10 @@ fun PedidoEnCursoScreen(
     var currentLat by remember { mutableDoubleStateOf(0.0) }
     var currentLng by remember { mutableDoubleStateOf(0.0) }
     var ruta by remember { mutableStateOf<List<LatLng>>(emptyList()) }
+    var duracionMin by remember { mutableStateOf(0) }
 
+    var showPedidoCompletadoDialog by remember { mutableStateOf(false) }
+    var gananciaPedido by remember { mutableStateOf("") }
     var showConfirmDialog by remember { mutableStateOf(false) }
     var estadoPendiente by remember { mutableStateOf("") }
     var showDetailsDialog by remember { mutableStateOf(false) }
@@ -93,7 +107,9 @@ fun PedidoEnCursoScreen(
         LocationServices.getFusedLocationProviderClient(context)
     }
 
-    val cameraPositionState = rememberCameraPositionState()
+    val cameraPositionState = rememberCameraPositionState {
+        position = CameraPosition.fromLatLngZoom(LimaDefault, 14f)
+    }
 
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -114,6 +130,78 @@ fun PedidoEnCursoScreen(
         hasLocationPermission =
             permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
                     permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+    }
+
+    var hasNotificationPermission by remember {
+        mutableStateOf(
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasNotificationPermission = granted
+    }
+    LaunchedEffect(activeOrder?.id, activeOrder?.estado) {
+        while (
+            activeOrder?.id != null &&
+            normalizarEstadoPedido(activeOrder?.estado) != "entregado"
+        ) {
+            val orderId = activeOrder?.id ?: break
+
+            RetrofitClient.instance.getDriverLocation(orderId)
+                .enqueue(object : Callback<DriverLocationResponse> {
+                    override fun onResponse(
+                        call: Call<DriverLocationResponse>,
+                        response: Response<DriverLocationResponse>
+                    ) {
+                        val result = response.body()
+
+                        if (response.isSuccessful && result?.success == true) {
+                            val lat = result.driver_lat?.toDoubleOrNull()
+                            val lng = result.driver_lng?.toDoubleOrNull()
+
+                            if (lat != null && lng != null) {
+                                currentLat = lat
+                                currentLng = lng
+                            }
+                        }
+                    }
+
+                    override fun onFailure(
+                        call: Call<DriverLocationResponse>,
+                        t: Throwable
+                    ) {}
+                })
+
+            delay(3000)
+        }
+    }
+
+    fun iniciarServicioUbicacion(orderId: Int) {
+        if (orderId <= 0 || driverEmail.isBlank()) return
+
+        val serviceIntent = Intent(context, LocationForegroundService::class.java).apply {
+            putExtra("order_id", orderId)
+            putExtra("driver_email", driverEmail)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ContextCompat.startForegroundService(context, serviceIntent)
+        } else {
+            context.startService(serviceIntent)
+        }
+    }
+
+    fun detenerServicioUbicacion() {
+        context.stopService(
+            Intent(context, LocationForegroundService::class.java)
+        )
     }
 
     fun cargarPedidoActivo() {
@@ -181,10 +269,10 @@ fun PedidoEnCursoScreen(
                     errorMessage = ""
 
                     if (nuevoEstado == "entregado") {
-                        navController.navigate("driver_lobby") {
-                            popUpTo("pedido_en_curso") { inclusive = true }
-                            launchSingleTop = true
-                        }
+                        detenerServicioUbicacion()
+
+                        gananciaPedido = activeOrder?.total ?: "0.00"
+                        showPedidoCompletadoDialog = true
                     } else {
                         cargarPedidoActivo()
                     }
@@ -200,11 +288,8 @@ fun PedidoEnCursoScreen(
         })
     }
 
-    fun obtenerUbicacionYEnviar() {
+    fun obtenerUbicacionInicialMapa() {
         if (!hasLocationPermission) return
-
-        val orderId = activeOrder?.id ?: return
-        if (driverEmail.isBlank()) return
 
         try {
             val locationRequest = CurrentLocationRequest.Builder()
@@ -216,20 +301,6 @@ fun PedidoEnCursoScreen(
                     if (location != null) {
                         currentLat = location.latitude
                         currentLng = location.longitude
-
-                        RetrofitClient.instance.updateDriverLocation(
-                            orderId = orderId,
-                            driverEmail = driverEmail,
-                            lat = currentLat.toString(),
-                            lng = currentLng.toString()
-                        ).enqueue(object : Callback<BasicResponse> {
-                            override fun onResponse(
-                                call: Call<BasicResponse>,
-                                response: Response<BasicResponse>
-                            ) {}
-
-                            override fun onFailure(call: Call<BasicResponse>, t: Throwable) {}
-                        })
                     }
                 }
         } catch (e: SecurityException) {
@@ -247,23 +318,36 @@ fun PedidoEnCursoScreen(
             )
         }
 
-        cargarPedidoActivo()
-    }
-
-    LaunchedEffect(driverEmail) {
-        while (driverEmail.isNotBlank()) {
-            delay(30000)
-            cargarPedidoActivo()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+
+        cargarPedidoActivo()
+        obtenerUbicacionInicialMapa()
     }
 
-    LaunchedEffect(activeOrder?.id, hasLocationPermission, activeOrder?.estado) {
-        while (
-            activeOrder?.id != null &&
-            normalizarEstadoPedido(activeOrder?.estado) != "entregado"
+    LaunchedEffect(
+        activeOrder?.id,
+        activeOrder?.estado,
+        driverEmail,
+        hasLocationPermission,
+        hasNotificationPermission
+    ) {
+        val order = activeOrder
+        val estado = normalizarEstadoPedido(order?.estado)
+
+        if (
+            order?.id != null &&
+            driverEmail.isNotBlank() &&
+            hasLocationPermission &&
+            hasNotificationPermission &&
+            estado != "entregado"
         ) {
-            obtenerUbicacionYEnviar()
-            delay(5000)
+            iniciarServicioUbicacion(order.id)
+        }
+
+        if (estado == "entregado" || order == null) {
+            detenerServicioUbicacion()
         }
     }
 
@@ -293,15 +377,19 @@ fun PedidoEnCursoScreen(
             else -> null
         }
 
-        ruta = if (origin != null && destination != null) {
-            withContext(Dispatchers.IO) {
-                obtenerRuta(
+        if (origin != null && destination != null) {
+            val resultado = withContext(Dispatchers.IO) {
+                obtenerRutaCompleta(
                     origin = origin,
                     destination = destination
                 )
             }
+
+            ruta = resultado.puntos
+            duracionMin = resultado.duracionMin
         } else {
-            emptyList()
+            ruta = emptyList()
+            duracionMin = 0
         }
     }
 
@@ -332,106 +420,55 @@ fun PedidoEnCursoScreen(
     val dropPoint =
         if (dropLat != null && dropLng != null) LatLng(dropLat, dropLng) else null
 
-    Column(modifier = Modifier.fillMaxSize()) {
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(0.56f)
-        ) {
-            GoogleMap(
-                modifier = Modifier.fillMaxSize(),
-                cameraPositionState = cameraPositionState
-            ) {
-                if (pickupPoint != null && estadoActual == "asignado") {
-                    Marker(
-                        state = MarkerState(pickupPoint),
-                        title = "Recojo"
-                    )
-                }
-
-                if (dropPoint != null && estadoActual != "entregado") {
-                    Marker(
-                        state = MarkerState(dropPoint),
-                        title = "Entrega"
-                    )
-                }
-
-                if (currentLat != 0.0 && currentLng != 0.0) {
-                    Marker(
-                        state = MarkerState(LatLng(currentLat, currentLng)),
-                        title = "Repartidor"
-                    )
-                }
-
-                if (ruta.isNotEmpty()) {
-                    Polyline(
-                        points = ruta,
-                        color = Color(0xFF00B7FF),
-                        width = 10f
-                    )
-                } else if (pickupPoint != null && dropPoint != null) {
-                    Polyline(
-                        points = listOf(pickupPoint, dropPoint),
-                        color = Color(0xFF00B7FF),
-                        width = 8f
-                    )
-                }
-            }
-
-            IconButton(
-                onClick = { navController.popBackStack() },
-                modifier = Modifier
-                    .padding(16.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White.copy(alpha = 0.92f))
-                    .align(Alignment.TopStart)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "Volver",
-                    tint = DriverBlue
+    LaunchedEffect(activeOrder?.id, pickupPoint, dropPoint, currentLat, currentLng) {
+        if (currentLat == 0.0 && currentLng == 0.0) {
+            val target = when {
+                pickupPoint != null && dropPoint != null -> LatLng(
+                    (pickupPoint.latitude + dropPoint.latitude) / 2,
+                    (pickupPoint.longitude + dropPoint.longitude) / 2
                 )
+                pickupPoint != null -> pickupPoint
+                dropPoint != null -> dropPoint
+                else -> null
             }
 
-            IconButton(
-                onClick = {
-                    if (currentLat != 0.0 && currentLng != 0.0) {
-                        cameraPositionState.move(
-                            CameraUpdateFactory.newLatLngZoom(
-                                LatLng(currentLat, currentLng),
-                                17f
-                            )
-                        )
-                    }
-                },
-                modifier = Modifier
-                    .padding(16.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.92f))
-                    .align(Alignment.TopEnd)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.MyLocation,
-                    contentDescription = "Mi ubicación",
-                    tint = DriverBlue
+            if (target != null) {
+                cameraPositionState.move(
+                    CameraUpdateFactory.newLatLngZoom(target, 13.5f)
                 )
             }
         }
+    }
 
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(0.44f)
-                .navigationBarsPadding(),
-            shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
-            colors = CardDefaults.cardColors(containerColor = DriverBg)
-        ) {
+    val sheetState = rememberStandardBottomSheetState(
+        initialValue = SheetValue.PartiallyExpanded,
+        skipHiddenState = true
+    )
+
+    val scaffoldState = rememberBottomSheetScaffoldState(
+        bottomSheetState = sheetState
+    )
+
+    BottomSheetScaffold(
+        scaffoldState = scaffoldState,
+        sheetPeekHeight = 145.dp,
+        sheetContainerColor = DriverBg,
+        sheetShadowElevation = 18.dp,
+        sheetShape = RoundedCornerShape(
+            topStart = 26.dp,
+            topEnd = 26.dp
+        ),
+        sheetDragHandle = {
+            BottomSheetDefaults.DragHandle()
+        },
+        sheetContent = {
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .heightIn(min = 145.dp, max = 760.dp)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -475,8 +512,10 @@ fun PedidoEnCursoScreen(
 
                     activeOrder != null -> {
                         PedidoEnCursoContenidoRedisenado(
+                            navController = navController,
                             activeOrder = activeOrder!!,
                             isUpdating = isUpdating,
+                            duracionMin = duracionMin,
                             onVerDetalles = { showDetailsDialog = true },
                             onConfirmarEstado = { estado ->
                                 estadoPendiente = estado
@@ -484,6 +523,100 @@ fun PedidoEnCursoScreen(
                             }
                         )
                     }
+                }
+            }
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            val puedeMostrarMapa = currentLat != 0.0 && currentLng != 0.0 || pickupPoint != null || dropPoint != null
+
+            if (!puedeMostrarMapa) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.White),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = DriverBlue)
+                }
+            } else {
+                GoogleMap(
+                    modifier = Modifier.fillMaxSize(),
+                    cameraPositionState = cameraPositionState
+                ) {
+                    if (pickupPoint != null && estadoActual == "asignado") {
+                        Marker(
+                            state = MarkerState(pickupPoint),
+                            title = "Recojo"
+                        )
+                    }
+
+                    if (dropPoint != null && estadoActual != "entregado") {
+                        Marker(
+                            state = MarkerState(dropPoint),
+                            title = "Entrega"
+                        )
+                    }
+
+                    if (currentLat != 0.0 && currentLng != 0.0) {
+                        Marker(
+                            state = MarkerState(LatLng(currentLat, currentLng)),
+                            title = "Repartidor"
+                        )
+                    }
+
+                    if (ruta.isNotEmpty()) {
+                        Polyline(
+                            points = ruta,
+                            color = Color(0xFF00B7FF),
+                            width = 10f
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = { navController.popBackStack() },
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(alpha = 0.92f))
+                        .align(Alignment.TopStart)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Volver",
+                        tint = DriverBlue
+                    )
+                }
+
+                IconButton(
+                    onClick = {
+                        if (currentLat != 0.0 && currentLng != 0.0) {
+                            cameraPositionState.move(
+                                CameraUpdateFactory.newLatLngZoom(
+                                    LatLng(currentLat, currentLng),
+                                    17f
+                                )
+                            )
+                        } else {
+                            obtenerUbicacionInicialMapa()
+                        }
+                    },
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.92f))
+                        .align(Alignment.TopEnd)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MyLocation,
+                        contentDescription = "Mi ubicación",
+                        tint = DriverBlue
+                    )
                 }
             }
         }
@@ -572,12 +705,161 @@ fun PedidoEnCursoScreen(
             }
         )
     }
+
+    if (showPedidoCompletadoDialog) {
+
+        Dialog(
+            onDismissRequest = {
+                showPedidoCompletadoDialog = false
+            }
+        ) {
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.White
+                )
+            ) {
+
+                Column {
+
+                    // HEADER VERDE
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(
+                                        Color(0xFF059669),
+                                        Color(0xFF16A34A),
+                                        Color(0xFF22C55E)
+                                    )
+                                )
+                            )
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+
+                            Box(
+                                modifier = Modifier
+                                    .size(70.dp)
+                                    .background(
+                                        Color.White.copy(alpha = 0.20f),
+                                        CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "✓",
+                                    color = Color.White,
+                                    fontSize = 34.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+
+                            Text(
+                                "¡Pedido completado! 🎉",
+                                color = Color.White,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+
+                            Text(
+                                "Buen trabajo",
+                                color = Color.White.copy(alpha = 0.85f),
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.padding(20.dp)
+                    ) {
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+
+                            StatCard(
+                                value = "S/ ${gananciaPedido.ifBlank { "0.00" }}",
+                                label = "Ganado",
+                                valueColor = Color(0xFF059669),
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            StatCard(
+                                value = activeOrder?.distancia_km ?: "--",
+                                label = "Distancia",
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            StatCard(
+                                value = "${duracionMin} min",
+                                label = "Tiempo",
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = Color(0xFFF0FFF4)
+                            )
+                        ) {
+                            Text(
+                                text = "Excelente trabajo. El pedido fue entregado correctamente.",
+                                modifier = Modifier.padding(14.dp),
+                                color = Color(0xFF065F46),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        Button(
+                            onClick = {
+                                showPedidoCompletadoDialog = false
+                                navController.navigate("mis_entregas")
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF16A34A)
+                            )
+                        ) {
+                            Text("Ver mis ganancias")
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        TextButton(
+                            onClick = {
+                                showPedidoCompletadoDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Volver")
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
 private fun PedidoEnCursoContenidoRedisenado(
+    navController: NavController,
     activeOrder: Order,
     isUpdating: Boolean,
+    duracionMin: Int,
     onVerDetalles: () -> Unit,
     onConfirmarEstado: (String) -> Unit
 ) {
@@ -592,6 +874,15 @@ private fun PedidoEnCursoContenidoRedisenado(
         metodoPago = activeOrder.metodo_pago ?: "-",
         total = activeOrder.total ?: "-",
         distanciaKm = activeOrder.distancia_km ?: "-"
+    )
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    Text(
+        text = if (duracionMin > 0) "Tiempo estimado: $duracionMin min" else "Tiempo estimado: calculando...",
+        color = DriverBlue,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Bold
     )
 
     Column(
@@ -624,6 +915,29 @@ private fun PedidoEnCursoContenidoRedisenado(
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+
+    Button(
+        onClick = {
+            val clienteEmail = activeOrder.user_email ?: return@Button
+            val emailEncoded = Uri.encode(clienteEmail)
+
+            navController.navigate(
+                "chat_pedido/${activeOrder.id}/$emailEncoded"
+            )
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp),
+        shape = RoundedCornerShape(14.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = DriverBlue
+        )
+    ) {
+        Text(
+            text = "💬 Chat con cliente",
+            fontWeight = FontWeight.Bold
+        )
     }
 
     EstadoBadgePedido(estado)
@@ -693,8 +1007,10 @@ private fun PedidoEnCursoContenidoRedisenado(
                 fontWeight = FontWeight.Black
             )
         }
+
     }
 }
+
 
 @Composable
 private fun RouteLinePedido(
@@ -878,8 +1194,8 @@ private fun DetalleTexto(
         )
     }
 }
-private fun obtenerUrlFotoPaquete(foto: String?): String? {
 
+private fun obtenerUrlFotoPaquete(foto: String?): String? {
     if (foto.isNullOrBlank()) return null
 
     return when {
@@ -891,5 +1207,36 @@ private fun obtenerUrlFotoPaquete(foto: String?): String? {
 
         else ->
             "https://peruchocourier.com/perucho_api/uploads/paquetes/$foto"
+    }
+}
+@Composable
+fun StatCard(
+    value: String,
+    label: String,
+    modifier: Modifier = Modifier,
+    valueColor: Color = Color.Black
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFF9FAFB)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                value,
+                fontWeight = FontWeight.Bold,
+                color = valueColor
+            )
+
+            Text(
+                label,
+                fontSize = 11.sp,
+                color = Color.Gray
+            )
+        }
     }
 }

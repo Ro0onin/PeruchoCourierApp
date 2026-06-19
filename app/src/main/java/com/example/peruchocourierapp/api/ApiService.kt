@@ -5,6 +5,7 @@ import com.example.peruchocourierapp.models.BasicResponse
 import com.example.peruchocourierapp.models.CreateOrderResponse
 import com.example.peruchocourierapp.models.DriverDashboardResponse
 import com.example.peruchocourierapp.models.DriverLocationResponse
+import com.example.peruchocourierapp.models.GetChatMessagesResponse
 import com.example.peruchocourierapp.models.GetDriverHistoryResponse
 import com.example.peruchocourierapp.models.GetOrdersResponse
 import com.example.peruchocourierapp.models.LoginResponse
@@ -230,4 +231,25 @@ interface ApiService {
     fun getVerificationStatus(
         @Query("email") email: String
     ): Call<VerificationStatusResponse>
+
+    @FormUrlEncoded
+    @POST("send_chat_message.php")
+    fun sendChatMessage(
+        @Field("order_id") orderId: Int,
+        @Field("sender_email") senderEmail: String,
+        @Field("receiver_email") receiverEmail: String,
+        @Field("mensaje") mensaje: String
+    ): Call<BasicResponse>
+
+    @GET("get_chat_messages.php")
+    fun getChatMessages(
+        @Query("order_id") orderId: Int
+    ): Call<GetChatMessagesResponse>
+
+    @FormUrlEncoded
+    @POST("mark_chat_read.php")
+    fun markChatRead(
+        @Field("order_id") orderId: Int,
+        @Field("user_email") userEmail: String
+    ): Call<BasicResponse>
 }

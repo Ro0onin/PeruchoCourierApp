@@ -3,6 +3,8 @@ package com.example.peruchocourierapp.screens
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.location.Geocoder
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -32,6 +35,7 @@ import androidx.navigation.NavController
 import com.example.peruchocourierapp.R
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.libraries.places.api.Places
@@ -41,6 +45,8 @@ import com.google.android.libraries.places.api.net.FetchPlaceRequest
 import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
+import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -53,6 +59,43 @@ private const val userZoom = 16f
 
 private fun estaDentroDePeru(lat: Double, lng: Double): Boolean {
     return lat in -18.50..-0.01 && lng in -81.50..-68.50
+}
+
+private fun esPlusCode(texto: String): Boolean {
+    val limpio = texto.trim()
+    val primeraParte = limpio.substringBefore(",").trim()
+    return primeraParte.contains("+") && primeraParte.any { it.isDigit() }
+}
+
+private fun limpiarDireccion(texto: String?): String {
+    val valor = texto?.trim().orEmpty()
+    if (valor.isBlank()) return "Ubicación seleccionada"
+
+    return if (esPlusCode(valor)) {
+        valor.substringAfter(",", "Ubicación seleccionada").trim().ifBlank { "Ubicación seleccionada" }
+    } else {
+        valor
+    }
+}
+
+private fun direccionDesdePlace(
+    place: Place,
+    prediction: AutocompletePrediction
+): String {
+    val address = limpiarDireccion(place.address)
+    val name = limpiarDireccion(place.name)
+    val primary = limpiarDireccion(prediction.getPrimaryText(null).toString())
+    val secondary = limpiarDireccion(prediction.getSecondaryText(null).toString())
+    val fullText = limpiarDireccion(prediction.getFullText(null).toString())
+
+    return when {
+        address != "Ubicación seleccionada" && !esPlusCode(address) -> address
+        secondary != "Ubicación seleccionada" && !esPlusCode(secondary) -> secondary
+        fullText != "Ubicación seleccionada" && !esPlusCode(fullText) -> fullText
+        name != "Ubicación seleccionada" && !esPlusCode(name) -> name
+        primary != "Ubicación seleccionada" && !esPlusCode(primary) -> primary
+        else -> "Ubicación seleccionada"
+    }
 }
 
 @SuppressLint("MissingPermission")
@@ -68,8 +111,9 @@ fun MapPickerScreen(
         LocationServices.getFusedLocationProviderClient(context)
     }
 
-    var selectedLocation by remember { mutableStateOf(limaCenter) }
-    var selectedAddress by remember { mutableStateOf("Moviendo mapa...") }
+    var selectedLocation by remember { mutableStateOf<LatLng?>(null) }
+    var selectedAddress by remember { mutableStateOf("") }
+    var locationSelected by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     var isMoving by remember { mutableStateOf(false) }
 
@@ -173,44 +217,44 @@ fun MapPickerScreen(
                     val userLatLng = LatLng(location.latitude, location.longitude)
 
                     if (estaDentroDePeru(userLatLng.latitude, userLatLng.longitude)) {
-                        selectedLocation = userLatLng
-
                         cameraPositionState.move(
                             CameraUpdateFactory.newLatLngZoom(userLatLng, userZoom)
                         )
 
-                        selectedAddress = obtenerDireccionDesdeCoordenadas(
-                            context = context,
-                            lat = userLatLng.latitude,
-                            lng = userLatLng.longitude
-                        )
+                        selectedLocation = null
+                        selectedAddress = ""
+                        locationSelected = false
                     } else {
-                        selectedLocation = limaCenter
-                        selectedAddress = "Lima, Perú"
+                        selectedLocation = null
+                        selectedAddress = ""
+                        locationSelected = false
 
                         cameraPositionState.move(
                             CameraUpdateFactory.newLatLngZoom(limaCenter, 14f)
                         )
                     }
                 } else {
-                    selectedLocation = limaCenter
-                    selectedAddress = "Lima, Perú"
+                    selectedLocation = null
+                    selectedAddress = ""
+                    locationSelected = false
 
                     cameraPositionState.move(
                         CameraUpdateFactory.newLatLngZoom(limaCenter, 14f)
                     )
                 }
             } catch (_: Exception) {
-                selectedLocation = limaCenter
-                selectedAddress = "Lima, Perú"
+                selectedLocation = null
+                selectedAddress = ""
+                locationSelected = false
 
                 cameraPositionState.move(
                     CameraUpdateFactory.newLatLngZoom(limaCenter, 14f)
                 )
             }
         } else {
-            selectedLocation = limaCenter
-            selectedAddress = "Lima, Perú"
+            selectedLocation = null
+            selectedAddress = ""
+            locationSelected = false
 
             cameraPositionState.move(
                 CameraUpdateFactory.newLatLngZoom(limaCenter, 14f)
@@ -222,28 +266,10 @@ fun MapPickerScreen(
         if (cameraPositionState.isMoving) {
             isMoving = true
             errorMessage = ""
-            selectedAddress = "Moviendo mapa..."
         }
 
         if (!cameraPositionState.isMoving && isMoving) {
             isMoving = false
-
-            val center = cameraPositionState.position.target
-
-            if (!estaDentroDePeru(center.latitude, center.longitude)) {
-                errorMessage = "Solo puedes seleccionar ubicaciones dentro del Perú"
-                selectedAddress = "Ubicación fuera del Perú"
-                return@LaunchedEffect
-            }
-
-            selectedLocation = center
-            errorMessage = ""
-
-            selectedAddress = obtenerDireccionDesdeCoordenadas(
-                context = context,
-                lat = center.latitude,
-                lng = center.longitude
-            )
         }
     }
 
@@ -255,36 +281,152 @@ fun MapPickerScreen(
             properties = MapProperties(
                 isMyLocationEnabled = hasLocationPermission
             )
-        )
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(y = (-30).dp)
         ) {
-            Image(
-                painter = painterResource(
-                    id = if (tipo == "pickup") {
-                        R.drawable.ic_pin_recojo
-                    } else {
-                        R.drawable.ic_pin_entrega
-                    }
-                ),
-                contentDescription = null,
-                modifier = Modifier.size(80.dp)
-            )
+            if (locationSelected && selectedLocation != null) {
+                Marker(
+                    state = MarkerState(position = selectedLocation!!),
+                    title = if (tipo == "pickup") "Punto de recojo" else "Punto de entrega",
+                    draggable = false,
+                    icon = bitmapDescriptorFromDrawableSafe(
+                        context,
+                        if (tipo == "pickup") R.drawable.ic_pin_recojo else R.drawable.ic_pin_entrega,
+                        120,
+                        120
+                    )
+                )
+            }
         }
+
+
+        SearchBoxArriba(
+            tipo = tipo,
+            searchText = searchText,
+            predictions = predictions,
+            isSearching = isSearching,
+            onTextChange = {
+                searchText = it
+                errorMessage = ""
+            },
+            onClear = {
+                searchText = ""
+                predictions = emptyList()
+                selectedLocation = null
+                selectedAddress = ""
+                locationSelected = false
+            },
+            onPredictionClick = { prediction ->
+                isSearching = true
+                errorMessage = ""
+
+                val placeId = prediction.placeId
+                val fields = listOf(
+                    Place.Field.ID,
+                    Place.Field.NAME,
+                    Place.Field.ADDRESS,
+                    Place.Field.LAT_LNG
+                )
+
+                val request = FetchPlaceRequest.newInstance(placeId, fields)
+
+                Places.createClient(context)
+                    .fetchPlace(request)
+                    .addOnSuccessListener { response ->
+                        val place = response.place
+                        val latLng = place.latLng
+
+                        if (latLng == null) {
+                            errorMessage = "No se pudo obtener la ubicación"
+                            isSearching = false
+                            return@addOnSuccessListener
+                        }
+
+                        if (!estaDentroDePeru(latLng.latitude, latLng.longitude)) {
+                            errorMessage = "Solo puedes seleccionar ubicaciones dentro del Perú"
+                            isSearching = false
+                            return@addOnSuccessListener
+                        }
+
+                        selectedLocation = latLng
+                        selectedAddress = direccionDesdePlace(place, prediction)
+                        locationSelected = true
+                        searchText = selectedAddress
+                        predictions = emptyList()
+                        isSearching = false
+
+                        scope.launch {
+                            cameraPositionState.animate(
+                                CameraUpdateFactory.newLatLngZoom(latLng, userZoom)
+                            )
+                        }
+                    }
+                    .addOnFailureListener { e ->
+                        errorMessage = e.message ?: "No se pudo seleccionar el lugar"
+                        isSearching = false
+                    }
+            },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+        )
 
         IconButton(
             onClick = {
-                if (selectedLocation.latitude != 0.0 && selectedLocation.longitude != 0.0) {
-                    cameraPositionState.move(
-                        CameraUpdateFactory.newLatLngZoom(selectedLocation, userZoom)
+                if (!hasLocationPermission) {
+                    permissionLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        )
                     )
+                    return@IconButton
                 }
+
+                isSearching = true
+                errorMessage = ""
+
+                fusedLocationClient.lastLocation
+                    .addOnSuccessListener { location ->
+                        if (location == null) {
+                            errorMessage = "No se pudo obtener tu ubicación actual"
+                            isSearching = false
+                            return@addOnSuccessListener
+                        }
+
+                        val latLng = LatLng(location.latitude, location.longitude)
+
+                        if (!estaDentroDePeru(latLng.latitude, latLng.longitude)) {
+                            errorMessage = "Solo puedes seleccionar ubicaciones dentro del Perú"
+                            isSearching = false
+                            return@addOnSuccessListener
+                        }
+
+                        selectedLocation = latLng
+                        locationSelected = true
+
+                        scope.launch {
+                            selectedAddress = obtenerDireccionDesdeCoordenadas(
+                                context = context,
+                                lat = latLng.latitude,
+                                lng = latLng.longitude
+                            )
+
+                            searchText = selectedAddress
+                            isSearching = false
+
+                            cameraPositionState.animate(
+                                CameraUpdateFactory.newLatLngZoom(latLng, userZoom)
+                            )
+                        }
+                    }
+                    .addOnFailureListener {
+                        errorMessage = "No se pudo obtener tu ubicación"
+                        isSearching = false
+                    }
             },
             modifier = Modifier
-                .padding(16.dp)
+                .statusBarsPadding()
+                .padding(top = 86.dp, end = 16.dp)
                 .size(52.dp)
                 .clip(CircleShape)
                 .background(Color.White.copy(alpha = 0.95f))
@@ -329,177 +471,10 @@ fun MapPickerScreen(
                         "dropoff" -> "Punto de entrega"
                         else -> "Tu ubicación"
                     },
-                    fontSize = 24.sp,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
                     color = Color(0xFF1A1A1A)
                 )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                OutlinedTextField(
-                    value = searchText,
-                    onValueChange = {
-                        searchText = it
-                        errorMessage = ""
-                    },
-                    placeholder = {
-                        Text(
-                            text = if (tipo == "pickup") {
-                                "Escribe la calle o lugar de recojo"
-                            } else {
-                                "Escribe la calle o lugar de entrega"
-                            }
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = null,
-                            tint = Color(0xFF777777)
-                        )
-                    },
-                    trailingIcon = {
-                        if (searchText.isNotBlank()) {
-                            IconButton(
-                                onClick = {
-                                    searchText = ""
-                                    predictions = emptyList()
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Limpiar",
-                                    tint = Color(0xFF777777)
-                                )
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White,
-                        focusedBorderColor = Color(0xFF1A4FBF),
-                        unfocusedBorderColor = Color(0xFFE5E5E5),
-                        focusedTextColor = Color(0xFF1A1A1A),
-                        unfocusedTextColor = Color(0xFF1A1A1A)
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                )
-
-                if (predictions.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF7F9FF))
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 210.dp)
-                        ) {
-                            predictions.take(5).forEach { prediction ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            isSearching = true
-                                            errorMessage = ""
-
-                                            val placeId = prediction.placeId
-                                            val fields = listOf(
-                                                Place.Field.ID,
-                                                Place.Field.NAME,
-                                                Place.Field.ADDRESS,
-                                                Place.Field.LAT_LNG
-                                            )
-
-                                            val request = FetchPlaceRequest.newInstance(placeId, fields)
-
-                                            Places.createClient(context)
-                                                .fetchPlace(request)
-                                                .addOnSuccessListener { response ->
-                                                    val place = response.place
-                                                    val latLng = place.latLng
-
-                                                    if (latLng == null) {
-                                                        errorMessage = "No se pudo obtener la ubicación"
-                                                        isSearching = false
-                                                        return@addOnSuccessListener
-                                                    }
-
-                                                    if (!estaDentroDePeru(latLng.latitude, latLng.longitude)) {
-                                                        errorMessage = "Solo puedes seleccionar ubicaciones dentro del Perú"
-                                                        isSearching = false
-                                                        return@addOnSuccessListener
-                                                    }
-
-                                                    selectedLocation = latLng
-                                                    selectedAddress = place.address ?: place.name ?: prediction.getFullText(null).toString()
-                                                    searchText = selectedAddress
-                                                    predictions = emptyList()
-                                                    isSearching = false
-
-                                                    scope.launch {
-                                                        cameraPositionState.animate(
-                                                            CameraUpdateFactory.newLatLngZoom(
-                                                                latLng,
-                                                                userZoom
-                                                            )
-                                                        )
-                                                    }
-                                                }
-                                                .addOnFailureListener { e ->
-                                                    errorMessage = e.message ?: "No se pudo seleccionar el lugar"
-                                                    isSearching = false
-                                                }
-                                        }
-                                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Search,
-                                        contentDescription = null,
-                                        tint = Color(0xFF1A4FBF),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-
-                                    Spacer(modifier = Modifier.width(10.dp))
-
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = prediction.getPrimaryText(null).toString(),
-                                            color = Color(0xFF1A1A1A),
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-
-                                        Text(
-                                            text = prediction.getSecondaryText(null).toString(),
-                                            color = Color(0xFF777777),
-                                            fontSize = 12.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (isSearching) {
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = "Buscando dirección...",
-                        color = Color(0xFF1A4FBF),
-                        fontSize = 13.sp
-                    )
-                }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
@@ -535,6 +510,16 @@ fun MapPickerScreen(
                     shape = RoundedCornerShape(16.dp)
                 )
 
+                if (isSearching) {
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "Buscando dirección...",
+                        color = Color(0xFF1A4FBF),
+                        fontSize = 13.sp
+                    )
+                }
+
                 if (errorMessage.isNotBlank()) {
                     Spacer(modifier = Modifier.height(10.dp))
 
@@ -549,9 +534,16 @@ fun MapPickerScreen(
 
                 Button(
                     onClick = {
+                        val location = selectedLocation
+
+                        if (location == null || !locationSelected || selectedAddress.isBlank()) {
+                            errorMessage = "Selecciona una dirección primero"
+                            return@Button
+                        }
+
                         if (!estaDentroDePeru(
-                                selectedLocation.latitude,
-                                selectedLocation.longitude
+                                location.latitude,
+                                location.longitude
                             )
                         ) {
                             errorMessage = "Solo puedes confirmar ubicaciones dentro del Perú"
@@ -571,18 +563,18 @@ fun MapPickerScreen(
 
                         navController.previousBackStackEntry
                             ?.savedStateHandle
-                            ?.set("${tipo}_lat", selectedLocation.latitude)
+                            ?.set("${tipo}_lat", location.latitude)
 
                         navController.previousBackStackEntry
                             ?.savedStateHandle
-                            ?.set("${tipo}_lng", selectedLocation.longitude)
+                            ?.set("${tipo}_lng", location.longitude)
 
                         navController.popBackStack()
                     },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp),
-                    enabled = !isMoving && !isSearching && errorMessage.isBlank(),
+                    enabled = !isMoving && !isSearching && errorMessage.isBlank() && locationSelected && selectedLocation != null,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF1A1A1A),
                         contentColor = Color.White,
@@ -605,6 +597,133 @@ fun MapPickerScreen(
     }
 }
 
+@Composable
+private fun SearchBoxArriba(
+    tipo: String,
+    searchText: String,
+    predictions: List<AutocompletePrediction>,
+    isSearching: Boolean,
+    onTextChange: (String) -> Unit,
+    onClear: () -> Unit,
+    onPredictionClick: (AutocompletePrediction) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(10.dp, RoundedCornerShape(20.dp)),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp)
+        ) {
+            OutlinedTextField(
+                value = searchText,
+                onValueChange = onTextChange,
+                placeholder = {
+                    Text(
+                        text = if (tipo == "pickup") {
+                            "Busca el punto de recojo"
+                        } else {
+                            "Busca el punto de entrega"
+                        }
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = null,
+                        tint = Color(0xFF777777)
+                    )
+                },
+                trailingIcon = {
+                    if (searchText.isNotBlank()) {
+                        IconButton(onClick = onClear) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Limpiar",
+                                tint = Color(0xFF777777)
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White,
+                    focusedBorderColor = Color(0xFF1A4FBF),
+                    unfocusedBorderColor = Color(0xFFE5E5E5),
+                    focusedTextColor = Color(0xFF1A1A1A),
+                    unfocusedTextColor = Color(0xFF1A1A1A)
+                ),
+                shape = RoundedCornerShape(16.dp)
+            )
+
+            if (isSearching) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Buscando dirección...",
+                    color = Color(0xFF1A4FBF),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                )
+            }
+
+            if (predictions.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 260.dp)
+                ) {
+                    predictions.take(6).forEach { prediction ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { onPredictionClick(prediction) }
+                                .padding(horizontal = 10.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                tint = Color(0xFF1A4FBF),
+                                modifier = Modifier.size(18.dp)
+                            )
+
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = prediction.getPrimaryText(null).toString(),
+                                    color = Color(0xFF1A1A1A),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+
+                                Text(
+                                    text = prediction.getSecondaryText(null).toString(),
+                                    color = Color(0xFF777777),
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 private suspend fun obtenerDireccionDesdeCoordenadas(
     context: android.content.Context,
     lat: Double,
@@ -619,11 +738,45 @@ private suspend fun obtenerDireccionDesdeCoordenadas(
         val addresses = geocoder.getFromLocation(lat, lng, 1)
 
         if (!addresses.isNullOrEmpty()) {
-            addresses[0].getAddressLine(0) ?: "Ubicación seleccionada"
+            val item = addresses[0]
+            val address = limpiarDireccion(item.getAddressLine(0))
+
+            if (address != "Ubicación seleccionada" && !esPlusCode(address)) {
+                address
+            } else {
+                listOfNotNull(
+                    item.thoroughfare,
+                    item.subThoroughfare,
+                    item.subLocality,
+                    item.locality,
+                    item.adminArea,
+                    "Perú"
+                )
+                    .joinToString(", ")
+                    .ifBlank { "Ubicación seleccionada" }
+            }
         } else {
             "Ubicación seleccionada"
         }
     } catch (e: Exception) {
         "Ubicación seleccionada"
     }
+}
+
+private fun bitmapDescriptorFromDrawableSafe(
+    context: android.content.Context,
+    drawableId: Int,
+    width: Int,
+    height: Int
+): com.google.android.gms.maps.model.BitmapDescriptor {
+    val drawable = ContextCompat.getDrawable(context, drawableId)
+        ?: return BitmapDescriptorFactory.defaultMarker()
+
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+
+    drawable.setBounds(0, 0, canvas.width, canvas.height)
+    drawable.draw(canvas)
+
+    return BitmapDescriptorFactory.fromBitmap(bitmap)
 }

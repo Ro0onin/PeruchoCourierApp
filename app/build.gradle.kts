@@ -11,8 +11,8 @@ android {
         applicationId = "com.jeanpier.peruchocourier"
         minSdk = 24
         targetSdk = 36
-        versionCode = 10
-        versionName = "1.0.9"
+        versionCode = 11
+        versionName = "1.0.10"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val mapsApiKey = rootProject.file("local.properties")
             .readLines()
@@ -72,6 +72,7 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("io.coil-kt:coil-gif:2.6.0")
+    implementation(libs.androidx.ui)
 
 
 
