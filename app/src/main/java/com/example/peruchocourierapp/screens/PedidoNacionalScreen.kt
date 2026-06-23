@@ -975,7 +975,7 @@ private fun VehicleCard(
 
                 Text(
                     text = when (name) {
-                        "Motorizado" -> "✓ S/ 9 tarifa plana hasta 15 km"
+                        "Motorizado" -> "S/9 tarifa plana hasta 15 km"
                         else -> ""
                     },
                     color = Color(0xFF22C55E),

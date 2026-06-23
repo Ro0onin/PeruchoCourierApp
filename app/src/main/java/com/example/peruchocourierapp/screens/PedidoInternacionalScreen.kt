@@ -51,7 +51,6 @@ private val IntlBlueDark = Color(0xFF0D3280)
 private val IntlBlueLight = Color(0xFFE8EFFE)
 private val IntlRed = Color(0xFFE02020)
 private val IntlRedLight = Color(0xFFFFF0F0)
-private val IntlGreenLight = Color(0xFFD1FAE5)
 private val IntlGrayBg = Color(0xFFF4F6FB)
 private val IntlGrayBorder = Color(0xFFE8ECF4)
 private val IntlGrayText = Color(0xFF6B7A99)
@@ -68,7 +67,7 @@ fun PedidoInternacionalScreen(navController: NavController) {
     val context = LocalContext.current
     val sessionManager = SessionManager(context)
 
-    val precioPorKg = 9.0
+    val precioPorKg = 8.5
 
     var webCompra by remember { mutableStateOf("") }
     var productos by remember { mutableStateOf("") }
@@ -88,6 +87,7 @@ fun PedidoInternacionalScreen(navController: NavController) {
     var pdfUri by remember { mutableStateOf<Uri?>(null) }
     var pdfNombre by remember { mutableStateOf("Ningún archivo seleccionado") }
     var isSubmitting by remember { mutableStateOf(false) }
+    var showAduanaDialog by remember { mutableStateOf(false) }
 
     val totalEstimado = (pesoEstimado.toDoubleOrNull() ?: 0.0) * precioPorKg
 
@@ -143,7 +143,12 @@ fun PedidoInternacionalScreen(navController: NavController) {
                     value = webCompra,
                     placeholder = "ej: amazon.com",
                     icon = Icons.Outlined.Language,
-                    onValueChange = { webCompra = it }
+                    keyboardType = KeyboardType.Uri,
+                    onValueChange = {
+                        webCompra = it
+                            .lowercase()
+                            .replace(" ", "")
+                    }
                 )
 
                 IntlInput(
@@ -177,7 +182,11 @@ fun PedidoInternacionalScreen(navController: NavController) {
                     value = tracking,
                     placeholder = "Ej: 1Z999AA10123456784",
                     icon = Icons.Outlined.QrCode2,
-                    onValueChange = { tracking = it }
+                    onValueChange = {
+                        tracking = it
+                            .uppercase()
+                            .replace(" ", "")
+                    }
                 )
 
                 IntlDateInput(
@@ -198,7 +207,10 @@ fun PedidoInternacionalScreen(navController: NavController) {
                 )
             }
 
-            IntlTotalCard(totalEstimado)
+            IntlTotalCard(
+                total = totalEstimado,
+                onInfoClick = { showAduanaDialog = true }
+            )
 
             IntlSectionCard(
                 title = "Pago",
@@ -260,6 +272,30 @@ fun PedidoInternacionalScreen(navController: NavController) {
                             errorMessage = "Completa todos los campos"
                         }
 
+                        !esWebCompraValida(webCompra) -> {
+                            errorMessage = "La web de compra debe terminar en .com. Ejemplo: amazon.com"
+                        }
+
+                        productos.trim().length < 3 -> {
+                            errorMessage = "Ingresa un nombre de producto válido"
+                        }
+
+                        !esDecimalValido(precioCompra) ||
+                                precioCompra.toDoubleOrNull() == null ||
+                                precioCompra.toDouble() <= 0.0 -> {
+                            errorMessage = "Ingresa un precio de compra válido mayor a 0. Ejemplo: 25.99"
+                        }
+
+                        tracking.length < 6 -> {
+                            errorMessage = "Ingresa un número de tracking válido"
+                        }
+
+                        !esDecimalValido(pesoEstimado) ||
+                                pesoEstimado.toDoubleOrNull() == null ||
+                                pesoEstimado.toDouble() <= 0.0 -> {
+                            errorMessage = "Ingresa un peso estimado válido mayor a 0. Ejemplo: 1.50"
+                        }
+
                         pdfUri == null -> {
                             errorMessage = "Adjunta la factura PDF"
                         }
@@ -296,12 +332,12 @@ fun PedidoInternacionalScreen(navController: NavController) {
                                 RetrofitClient.instance.createInternationalOrder(
                                     email.toPlainRequestBody(),
                                     "internacional".toPlainRequestBody(),
-                                    webCompra.toPlainRequestBody(),
-                                    productos.toPlainRequestBody(),
-                                    precioCompra.toPlainRequestBody(),
-                                    tracking.toPlainRequestBody(),
+                                    normalizarWebCompra(webCompra).toPlainRequestBody(),
+                                    productos.trim().toPlainRequestBody(),
+                                    precioCompra.trim().toPlainRequestBody(),
+                                    tracking.trim().toPlainRequestBody(),
                                     fechaSeleccionada.toPlainRequestBody(),
-                                    pesoEstimado.toPlainRequestBody(),
+                                    pesoEstimado.trim().toPlainRequestBody(),
                                     metodoPago.toPlainRequestBody(),
                                     "%.2f".format(totalEstimado).toPlainRequestBody(),
                                     pdfPart
@@ -406,6 +442,61 @@ fun PedidoInternacionalScreen(navController: NavController) {
             DatePicker(state = datePickerState)
         }
     }
+
+    if (showAduanaDialog) {
+        AlertDialog(
+            onDismissRequest = { showAduanaDialog = false },
+            icon = {
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(IntlRedLight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.PriorityHigh,
+                        contentDescription = null,
+                        tint = IntlRed,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            },
+            title = {
+                Text(
+                    text = "Aviso de Aduana",
+                    color = IntlDark,
+                    fontWeight = FontWeight.Black
+                )
+            },
+            text = {
+                Text(
+                    text = "Team Perucho Courier te informa: si tu compra supera los $200 dólares, la aduana puede aplicar un impuesto aproximado del 25% sobre el valor declarado. Te recomendamos revisar el monto de tu compra antes de registrar tu pedido.",
+                    color = IntlGrayText,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showAduanaDialog = false },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = IntlBlue,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = "Entendido",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
 }
 
 @Composable
@@ -508,7 +599,7 @@ private fun InfoBanner() {
         Spacer(modifier = Modifier.width(10.dp))
 
         Text(
-            text = "Tarifa: $9 por kilo. Recibirás la dirección de nuestro almacén y asesoramiento personalizado.",
+            text = "Tarifa: $8.5 por kilo. Recibirás la dirección de nuestro almacén y asesoramiento personalizado.",
             color = IntlGrayText,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
@@ -728,7 +819,10 @@ private fun IntlDropdownInput(
 }
 
 @Composable
-private fun IntlTotalCard(total: Double) {
+private fun IntlTotalCard(
+    total: Double,
+    onInfoClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -755,13 +849,35 @@ private fun IntlTotalCard(total: Double) {
             )
         }
 
-        Text(
-            text = "Peso × $9/kg\nSe actualiza al ingresar peso",
-            color = Color.White.copy(alpha = 0.68f),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            lineHeight = 15.sp
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Peso × $8.5/kg\nSe actualiza al ingresar peso",
+                color = Color.White.copy(alpha = 0.68f),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                lineHeight = 15.sp
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(50.dp))
+                    .background(Color.White.copy(alpha = 0.18f))
+                    .clickable { onInfoClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.PriorityHigh,
+                    contentDescription = "Información aduana",
+                    tint = Color.White,
+                    modifier = Modifier.size(19.dp)
+                )
+            }
+        }
     }
 }
 
@@ -789,7 +905,7 @@ private fun PdfSelectorRow(
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Factura PDF",
+                text = "Comprobante de compra",
                 color = IntlDark,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Black
@@ -797,7 +913,7 @@ private fun PdfSelectorRow(
 
             Text(
                 text = if (pdfNombre == "Ningún archivo seleccionado") {
-                    "Opcional · Adjuntar comprobante"
+                    "Obligatorio · Adjuntar comprobante"
                 } else {
                     pdfNombre
                 },
@@ -840,3 +956,24 @@ private fun intlFieldColors() = OutlinedTextFieldDefaults.colors(
     unfocusedPlaceholderColor = IntlGrayLight,
     disabledPlaceholderColor = IntlGrayLight
 )
+
+private fun normalizarWebCompra(input: String): String {
+    return input
+        .trim()
+        .lowercase()
+        .replace("https://", "")
+        .replace("http://", "")
+        .removePrefix("www.")
+}
+
+private fun esWebCompraValida(input: String): Boolean {
+    val web = normalizarWebCompra(input)
+
+    return web.matches(
+        Regex("^[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)*\\.com$")
+    )
+}
+
+private fun esDecimalValido(input: String): Boolean {
+    return input.matches(Regex("^\\d+(\\.\\d{1,2})?$"))
+}

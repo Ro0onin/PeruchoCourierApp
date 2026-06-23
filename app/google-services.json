@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "147805546500",
+    "project_id": "peruchocourier-42da0",
+    "storage_bucket": "peruchocourier-42da0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:147805546500:android:221dd758cb1e5cef66ad51",
+        "android_client_info": {
+          "package_name": "com.jeanpier.peruchocourier"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "147805546500-isemm6j6ds796sb32i6nadms0eqn7ak2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.jeanpier.peruchocourier",
+            "certificate_hash": "0ab167c0c2e997badb881d30a7ce548b04bfd344"
+          }
+        },
+        {
+          "client_id": "147805546500-piiegdp3ge93bhciknngm0fqr6bg6ea9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.jeanpier.peruchocourier",
+            "certificate_hash": "f7a872ae54a67609e3797325336d49f9caa937e6"
+          }
+        },
+        {
+          "client_id": "147805546500-br6apar1e0j9bmveh1mcde5kf0l06v3t.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA_N_LLDuwuCQ_4RmPEiP3004bj9a3rHiU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "147805546500-br6apar1e0j9bmveh1mcde5kf0l06v3t.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="PLACEHOLDER" />
-                  <option name="mobileSdkAppId" value="" />
-                  <option name="projectId" value="" />
-                  <option name="projectNumber" value="" />
+                  <option name="appId" value="com.jeanpier.peruchocourier" />
+                  <option name="mobileSdkAppId" value="1:147805546500:android:221dd758cb1e5cef66ad51" />
+                  <option name="projectId" value="peruchocourier-42da0" />
+                  <option name="projectNumber" value="147805546500" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

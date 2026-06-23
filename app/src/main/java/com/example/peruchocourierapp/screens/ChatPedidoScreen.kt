@@ -16,6 +16,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,9 +34,12 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.peruchocourierapp.SessionManager
 import com.example.peruchocourierapp.api.RetrofitClient
+import com.example.peruchocourierapp.models.ActiveOrderResponse
 import com.example.peruchocourierapp.models.BasicResponse
 import com.example.peruchocourierapp.models.ChatMessage
 import com.example.peruchocourierapp.models.GetChatMessagesResponse
+import com.google.gson.Gson
+import com.google.gson.JsonObject
 import kotlinx.coroutines.delay
 import retrofit2.Call
 import retrofit2.Callback
@@ -89,6 +93,8 @@ fun ChatPedidoScreen(
     var isSending by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf("") }
+    var chatBloqueado by remember { mutableStateOf(false) }
+    var estadoPedido by remember { mutableStateOf("asignado") }
 
     fun mapearMensaje(msg: ChatMessage): ChatMensajeUi {
         val isMine = msg.sender_email.trim().equals(myEmail, ignoreCase = true)
@@ -123,6 +129,38 @@ fun ChatPedidoScreen(
 
             override fun onFailure(
                 call: Call<BasicResponse>,
+                t: Throwable
+            ) {}
+        })
+    }
+
+    fun cargarEstadoPedido() {
+        if (orderId <= 0 || myEmail.isBlank()) return
+
+        RetrofitClient.instance.getOrderTracking(
+            orderId = orderId,
+            userEmail = myEmail
+        ).enqueue(object : Callback<ActiveOrderResponse> {
+            override fun onResponse(
+                call: Call<ActiveOrderResponse>,
+                response: Response<ActiveOrderResponse>
+            ) {
+                val estado = extraerEstadoPedido(response.body())
+
+                if (estado.isNotBlank()) {
+                    estadoPedido = estado
+
+                    val estadoNormalizado = estado.lowercase().trim()
+
+                    chatBloqueado =
+                        estadoNormalizado == "entregado" ||
+                                estadoNormalizado == "completado" ||
+                                estadoNormalizado == "finalizado"
+                }
+            }
+
+            override fun onFailure(
+                call: Call<ActiveOrderResponse>,
                 t: Throwable
             ) {}
         })
@@ -166,6 +204,11 @@ fun ChatPedidoScreen(
     fun enviarMensaje() {
         val texto = inputText.trim()
 
+        if (chatBloqueado) {
+            errorMsg = "Este chat está cerrado porque el pedido fue entregado"
+            return
+        }
+
         if (texto.isBlank() || isSending) return
 
         if (myEmail.isBlank()) {
@@ -198,8 +241,10 @@ fun ChatPedidoScreen(
                 if (response.isSuccessful && result?.success == true) {
                     errorMsg = ""
                     cargarMensajes()
+                    cargarEstadoPedido()
                 } else {
                     errorMsg = result?.message ?: "No se pudo enviar"
+                    cargarEstadoPedido()
                 }
             }
 
@@ -209,22 +254,25 @@ fun ChatPedidoScreen(
             ) {
                 isSending = false
                 errorMsg = "No se pudo enviar"
+                cargarEstadoPedido()
             }
         })
     }
 
     LaunchedEffect(orderId) {
         cargarMensajes()
+        cargarEstadoPedido()
 
         while (true) {
             delay(3000)
             cargarMensajes()
+            cargarEstadoPedido()
         }
     }
 
-    LaunchedEffect(mensajes.size) {
+    LaunchedEffect(mensajes.size, chatBloqueado) {
         if (mensajes.isNotEmpty()) {
-            listState.animateScrollToItem(mensajes.lastIndex)
+            listState.animateScrollToItem(mensajes.size)
         }
     }
 
@@ -244,10 +292,6 @@ fun ChatPedidoScreen(
         )
 
         ChatBanner(orderInfo = "Pedido #$orderId")
-        EstadoPedidoChatBubble(
-            texto = "Repartidor asignado",
-            subtitulo = "Pedido en curso"
-        )
 
         Box(
             modifier = Modifier
@@ -266,9 +310,36 @@ fun ChatPedidoScreen(
                 }
 
                 mensajes.isEmpty() -> {
-                    EmptyChatState(
-                        modifier = Modifier.align(Alignment.Center)
-                    )
+                    LazyColumn(
+                        state = listState,
+                        contentPadding = PaddingValues(
+                            horizontal = 12.dp,
+                            vertical = 12.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        item {
+                            EstadoPedidoChatBubble(
+                                texto = if (chatBloqueado) "Pedido entregado" else "Repartidor asignado",
+                                subtitulo = if (chatBloqueado) "Chat cerrado" else "Pedido en curso"
+                            )
+                        }
+
+                        if (chatBloqueado) {
+                            item {
+                                ChatCerradoMensaje()
+                            }
+                        } else {
+                            item {
+                                EmptyChatState(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 80.dp)
+                                )
+                            }
+                        }
+                    }
                 }
 
                 else -> {
@@ -281,6 +352,13 @@ fun ChatPedidoScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
+                        item {
+                            EstadoPedidoChatBubble(
+                                texto = if (chatBloqueado) "Pedido entregado" else "Repartidor asignado",
+                                subtitulo = if (chatBloqueado) "Chat cerrado" else "Pedido en curso"
+                            )
+                        }
+
                         items(
                             items = mensajes,
                             key = { it.id }
@@ -288,6 +366,12 @@ fun ChatPedidoScreen(
                             when (msg.tipo) {
                                 TipoBurbuja.ENVIADO -> MensajeEnviado(msg)
                                 TipoBurbuja.RECIBIDO -> MensajeRecibido(msg)
+                            }
+                        }
+
+                        if (chatBloqueado) {
+                            item {
+                                ChatCerradoMensaje()
                             }
                         }
                     }
@@ -321,12 +405,16 @@ fun ChatPedidoScreen(
             }
         }
 
-        ChatInputBar(
-            value = inputText,
-            onChange = { inputText = it },
-            isSending = isSending,
-            onSend = { enviarMensaje() }
-        )
+        if (chatBloqueado) {
+            ChatClosedBar()
+        } else {
+            ChatInputBar(
+                value = inputText,
+                onChange = { inputText = it },
+                isSending = isSending,
+                onSend = { enviarMensaje() }
+            )
+        }
     }
 }
 
@@ -734,6 +822,71 @@ private fun ChatInputBar(
     }
 }
 
+@Composable
+private fun ChatClosedBar() {
+    Surface(
+        color = Color.White,
+        shadowElevation = 8.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color(0xFFFFF1F1))
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Lock,
+                contentDescription = null,
+                tint = CRojo,
+                modifier = Modifier.size(20.dp)
+            )
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Column {
+                Text(
+                    text = "Chat cerrado",
+                    color = CRojo,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Black
+                )
+
+                Text(
+                    text = "El pedido ya fue entregado. No se pueden enviar más mensajes.",
+                    color = CMuted,
+                    fontSize = 11.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatCerradoMensaje() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = Color(0xFFEFEFEF)
+        ) {
+            Text(
+                text = "Pedido finalizado. Este chat quedó solo para lectura.",
+                color = CMuted,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+            )
+        }
+    }
+}
+
 private fun formatearHoraChat(fecha: String): String {
     if (fecha.length >= 16) {
         return fecha.substring(11, 16)
@@ -762,6 +915,48 @@ private fun obtenerInicialesChat(texto: String): String {
         }
 }
 
+private fun extraerEstadoPedido(response: ActiveOrderResponse?): String {
+    if (response == null) return ""
+
+    return try {
+        val json = Gson().toJsonTree(response).asJsonObject
+
+        json.getStringSafe("estado")
+            ?: json.getStringSafe("status")
+            ?: json.getObjectSafe("pedido")?.getStringSafe("estado")
+            ?: json.getObjectSafe("order")?.getStringSafe("estado")
+            ?: json.getObjectSafe("data")?.getStringSafe("estado")
+            ?: json.getObjectSafe("envio")?.getStringSafe("estado")
+            ?: ""
+    } catch (e: Exception) {
+        ""
+    }
+}
+
+private fun JsonObject.getStringSafe(key: String): String? {
+    return try {
+        if (has(key) && !get(key).isJsonNull) {
+            get(key).asString
+        } else {
+            null
+        }
+    } catch (e: Exception) {
+        null
+    }
+}
+
+private fun JsonObject.getObjectSafe(key: String): JsonObject? {
+    return try {
+        if (has(key) && get(key).isJsonObject) {
+            get(key).asJsonObject
+        } else {
+            null
+        }
+    } catch (e: Exception) {
+        null
+    }
+}
+
 @Composable
 private fun EstadoPedidoChatBubble(
     texto: String,
@@ -770,8 +965,7 @@ private fun EstadoPedidoChatBubble(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(CGrisFondo)
-            .padding(top = 16.dp),
+            .padding(top = 4.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.Center
     ) {
         Surface(

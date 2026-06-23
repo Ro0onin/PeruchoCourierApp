@@ -172,7 +172,8 @@ fun ClientLobbyScreen(navController: NavController) {
     }
 
     var nearbyPlaces by remember { mutableStateOf<List<NearbyPlaceItem>>(emptyList()) }
-    var placesMessage by remember { mutableStateOf("Cargando lugares cercanos...") }
+    var placesMessage by remember { mutableStateOf("") }
+    var isLoadingPlaces by remember { mutableStateOf(true) }
 
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -188,6 +189,7 @@ fun ClientLobbyScreen(navController: NavController) {
     ) { granted ->
         hasLocationPermission = granted
         if (!granted) {
+            isLoadingPlaces = false
             placesMessage = "Activa tu ubicación para ver lugares cercanos"
         }
     }
@@ -241,6 +243,7 @@ fun ClientLobbyScreen(navController: NavController) {
                             }
 
                         nearbyPlaces = places
+                        isLoadingPlaces = false
                         placesMessage = if (places.isEmpty()) {
                             "No se encontraron lugares cercanos"
                         } else {
@@ -248,10 +251,12 @@ fun ClientLobbyScreen(navController: NavController) {
                         }
                     }
                     .addOnFailureListener { e ->
+                        isLoadingPlaces = false
                         placesMessage = e.message ?: "Error al cargar Places"
                     }
 
             } catch (e: Exception) {
+                isLoadingPlaces = false
                 placesMessage = "No se pudieron cargar lugares cercanos"
             }
         }
@@ -300,6 +305,7 @@ fun ClientLobbyScreen(navController: NavController) {
             RecentPlacesList(
                 places = nearbyPlaces,
                 message = placesMessage,
+                isLoading = isLoadingPlaces,
                 onPlaceClick = { place ->
                     bloquearSiNoVerificado {
                         navController.currentBackStackEntry
@@ -718,32 +724,54 @@ private fun SearchDeliveryBar(
 private fun RecentPlacesList(
     places: List<NearbyPlaceItem>,
     message: String,
+    isLoading: Boolean,
     onPlaceClick: (NearbyPlaceItem) -> Unit
 ) {
     Column(
         modifier = Modifier.padding(horizontal = 16.dp)
     ) {
-        if (places.isEmpty()) {
-            RecentPlaceRow(
-                icon = Icons.Outlined.LocationOn,
-                title = message.ifBlank { "Cargando lugares cercanos..." },
-                subtitle = "Se mostrarán ubicaciones próximas a ti",
-                time = "",
-                iconBg = BrandBlueLight,
-                iconTint = BrandBlue,
-                onClick = {}
-            )
-        } else {
-            places.forEachIndexed { index, place ->
+        when {
+            isLoading -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(190.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(Color.White),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = BrandBlue,
+                        strokeWidth = 5.dp,
+                        modifier = Modifier.size(58.dp)
+                    )
+                }
+            }
+
+            places.isEmpty() -> {
                 RecentPlaceRow(
                     icon = Icons.Outlined.LocationOn,
-                    title = place.title,
-                    subtitle = place.subtitle,
-                    time = place.distanceText,
-                    iconBg = if (index % 2 == 0) BrandRedLight else BrandBlueLight,
-                    iconTint = if (index % 2 == 0) BrandRed else BrandBlue,
-                    onClick = { onPlaceClick(place) }
+                    title = message.ifBlank { "No se encontraron lugares cercanos" },
+                    subtitle = "Intenta activar tu ubicación o vuelve a intentarlo",
+                    time = "",
+                    iconBg = BrandBlueLight,
+                    iconTint = BrandBlue,
+                    onClick = {}
                 )
+            }
+
+            else -> {
+                places.forEachIndexed { index, place ->
+                    RecentPlaceRow(
+                        icon = Icons.Outlined.LocationOn,
+                        title = place.title,
+                        subtitle = place.subtitle,
+                        time = place.distanceText,
+                        iconBg = Color(0xFFF0F0F0),
+                        iconTint = Color.Black,
+                        onClick = { onPlaceClick(place) }
+                    )
+                }
             }
         }
     }
@@ -802,13 +830,6 @@ private fun RecentPlaceRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
-
-        Text(
-            text = time,
-            color = BrandBlue,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Black
-        )
     }
 }
 

@@ -72,7 +72,7 @@ import com.example.peruchocourierapp.models.Order
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-
+import java.text.Normalizer
 private val PcBlue = Color(0xFF1A4FBF)
 private val PcBlueDark = Color(0xFF0B2E78)
 private val PcBlueMid = Color(0xFF2D6BE4)
@@ -349,118 +349,131 @@ private fun PedidoPremiumCard(
         border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(if (isNacional) PcBlueLight else PcRedSoft),
-                    contentAlignment = Alignment.Center
-                ) {
+        Box(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.logo_perucho2),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                contentScale = ContentScale.Fit,
+                alpha = 0.12f
+            )
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (isNacional) PcBlueLight else PcRedSoft),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isNacional) Icons.Outlined.Inventory2 else Icons.Outlined.Language,
+                            contentDescription = null,
+                            tint = if (isNacional) PcBlue else PcRed,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Pedido #${order.id ?: 0}",
+                            color = Dark,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Black
+                        )
+
+                        Text(
+                            text = formatFecha(order.created_at),
+                            color = SoftText,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
                     Icon(
-                        imageVector = if (isNacional) Icons.Outlined.Inventory2 else Icons.Outlined.Language,
+                        imageVector = Icons.Outlined.ArrowForwardIos,
                         contentDescription = null,
-                        tint = if (isNacional) PcBlue else PcRed,
-                        modifier = Modifier.size(22.dp)
+                        tint = SoftText,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Pedido #${order.id ?: 0}",
-                        color = Dark,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Black
-                    )
-
-                    Text(
-                        text = formatFecha(order.created_at),
-                        color = SoftText,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Icon(
-                    imageVector = Icons.Outlined.ArrowForwardIos,
-                    contentDescription = null,
-                    tint = SoftText,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatusBadge(estado)
-                TypeBadge(if (isNacional) "Nacional" else "Internacional")
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            if (isNacional) {
-                RouteMiniLine(
-                    pickup = order.pickup_address ?: order.origen ?: "-",
-                    dropoff = order.dropoff_address ?: order.destino ?: "-"
-                )
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                InfoLine(
-                    icon = Icons.Outlined.Inventory2,
-                    text = "${order.categoria ?: "-"} · ${order.tamano_paquete ?: "-"}"
-                )
-            } else {
-                InfoLine(
-                    icon = Icons.Outlined.Language,
-                    text = "Compra en ${order.web_compra ?: "-"}"
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatusBadge(estado)
+                    TypeBadge(if (isNacional) "Nacional" else "Internacional")
+                }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                InfoLine(
-                    icon = Icons.Outlined.QrCode2,
-                    text = "Tracking: ${order.tracking ?: "-"}"
-                )
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-            HorizontalDivider(color = CardBorder)
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "TOTAL",
-                        color = SoftText,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 0.8.sp
+                if (isNacional) {
+                    RouteMiniLine(
+                        pickup = order.pickup_address ?: order.origen ?: "-",
+                        dropoff = order.dropoff_address ?: order.destino ?: "-"
                     )
 
-                    Text(
-                        text = totalText,
-                        color = PcBlueDark,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Black
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    InfoLine(
+                        icon = Icons.Outlined.Inventory2,
+                        text = "${order.categoria ?: "-"} · ${order.tamano_paquete ?: "-"}"
+                    )
+                } else {
+                    InfoLine(
+                        icon = Icons.Outlined.Language,
+                        text = "Compra en ${order.web_compra ?: "-"}"
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    InfoLine(
+                        icon = Icons.Outlined.QrCode2,
+                        text = "Tracking: ${order.tracking ?: "-"}"
                     )
                 }
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50.dp))
-                        .background(PcBlueLight)
-                        .padding(horizontal = 12.dp, vertical = 7.dp)
-                ) {
-                    Text(
-                        text = order.metodo_pago ?: "Pago",
-                        color = PcBlue,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Black
-                    )
+                Spacer(modifier = Modifier.height(14.dp))
+                HorizontalDivider(color = CardBorder)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "TOTAL",
+                            color = SoftText,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 0.8.sp
+                        )
+
+                        Text(
+                            text = totalText,
+                            color = PcBlueDark,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50.dp))
+                            .background(PcBlueLight)
+                            .padding(horizontal = 12.dp, vertical = 7.dp)
+                    ) {
+                        Text(
+                            text = order.metodo_pago ?: "Pago",
+                            color = PcBlue,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
                 }
             }
         }
@@ -737,7 +750,10 @@ private fun PedidoDetalleSheet(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        TrackingTimeline(estado = estado)
+        TrackingTimeline(
+            estado = estado,
+            isNacional = isNacional
+        )
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -817,7 +833,7 @@ private fun PedidoDetalleSheet(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        if (estado != "entregado" && estado != "cancelado") {
+        if (isNacional && estado != "entregado" && estado != "cancelado") {
             Button(
                 onClick = onTrack,
                 modifier = Modifier
@@ -1016,16 +1032,79 @@ private fun MiniStat(
 }
 
 @Composable
-private fun TrackingTimeline(estado: String) {
-    val steps = listOf(
-        "Pedido creado" to true,
-        "Pago confirmado" to (estado != "pendiente_pago"),
-        "En camino" to (estado == "en_transito" || estado == "asignado" || estado == "recogido" || estado == "recogiendo" || estado == "en_camino" || estado == "entregado"),
-        "Entregado" to (estado == "entregado")
-    )
+private fun TrackingTimeline(
+    estado: String,
+    isNacional: Boolean
+) {
+    val steps = if (isNacional) {
+        listOf(
+            "Pedido creado" to true,
+            "Pago confirmado" to (estado != "pendiente_pago"),
+            "Recojo asignado" to (estado in listOf("asignado", "recogiendo", "recogido", "en_camino", "entregado")),
+            "En camino" to (estado in listOf("en_camino", "entregado")),
+            "Entregado" to (estado == "entregado")
+        )
+    } else {
+        listOf(
+            "Pedido internacional registrado" to true,
+            "En revisión" to (estado in listOf(
+                "en_revision", "esperando_almacen", "recibido_en_almacen",
+                "en_consolidacion", "despachado", "transito_internacional",
+                "llego_a_peru", "desaduanaje", "pago_de_impuestos",
+                "liberado_por_aduanas", "en_distribucion", "en_ruta", "entregado"
+            )),
+            "Esperando almacén" to (estado in listOf(
+                "esperando_almacen", "recibido_en_almacen", "en_consolidacion",
+                "despachado", "transito_internacional", "llego_a_peru",
+                "desaduanaje", "pago_de_impuestos", "liberado_por_aduanas",
+                "en_distribucion", "en_ruta", "entregado"
+            )),
+            "Recibido en almacén" to (estado in listOf(
+                "recibido_en_almacen", "en_consolidacion", "despachado",
+                "transito_internacional", "llego_a_peru", "desaduanaje",
+                "pago_de_impuestos", "liberado_por_aduanas", "en_distribucion",
+                "en_ruta", "entregado"
+            )),
+            "En consolidación" to (estado in listOf(
+                "en_consolidacion", "despachado", "transito_internacional",
+                "llego_a_peru", "desaduanaje", "pago_de_impuestos",
+                "liberado_por_aduanas", "en_distribucion", "en_ruta", "entregado"
+            )),
+            "Despachado" to (estado in listOf(
+                "despachado", "transito_internacional", "llego_a_peru",
+                "desaduanaje", "pago_de_impuestos", "liberado_por_aduanas",
+                "en_distribucion", "en_ruta", "entregado"
+            )),
+            "Tránsito internacional" to (estado in listOf(
+                "transito_internacional", "llego_a_peru", "desaduanaje",
+                "pago_de_impuestos", "liberado_por_aduanas", "en_distribucion",
+                "en_ruta", "entregado"
+            )),
+            "Llegó a Perú" to (estado in listOf(
+                "llego_a_peru", "desaduanaje", "pago_de_impuestos",
+                "liberado_por_aduanas", "en_distribucion", "en_ruta", "entregado"
+            )),
+            "Desaduanaje" to (estado in listOf(
+                "desaduanaje", "pago_de_impuestos", "liberado_por_aduanas",
+                "en_distribucion", "en_ruta", "entregado"
+            )),
+            "Pago de impuestos" to (estado in listOf(
+                "pago_de_impuestos", "liberado_por_aduanas",
+                "en_distribucion", "en_ruta", "entregado"
+            )),
+            "Liberado por aduanas" to (estado in listOf(
+                "liberado_por_aduanas", "en_distribucion", "en_ruta", "entregado"
+            )),
+            "En distribución" to (estado in listOf(
+                "en_distribucion", "en_ruta", "entregado"
+            )),
+            "En ruta" to (estado in listOf("en_ruta", "entregado")),
+            "Entregado" to (estado == "entregado")
+        )
+    }
 
     DetailSection(
-        title = "Seguimiento",
+        title = if (isNacional) "Seguimiento" else "Seguimiento internacional",
         icon = Icons.Outlined.Schedule
     ) {
         steps.forEachIndexed { index, item ->
@@ -1042,7 +1121,7 @@ private fun TrackingTimeline(estado: String) {
                         Box(
                             modifier = Modifier
                                 .width(2.dp)
-                                .height(20.dp)
+                                .height(24.dp)
                                 .background(if (item.second) PcBlue else CardBorder)
                         )
                     }
@@ -1300,12 +1379,14 @@ private fun callPhone(
     }
 }
 private fun normalizarEstado(estado: String?): String {
-    return estado
-        ?.lowercase()
-        ?.trim()
-        ?.replace(" ", "_")
-        ?.replace("-", "_")
-        .orEmpty()
+    val sinAcentos = Normalizer.normalize(estado.orEmpty(), Normalizer.Form.NFD)
+        .replace("\\p{Mn}+".toRegex(), "")
+
+    return sinAcentos
+        .lowercase()
+        .trim()
+        .replace(" ", "_")
+        .replace("-", "_")
 }
 
 private fun estadoLegible(estado: String?): String {
@@ -1320,6 +1401,17 @@ private fun estadoLegible(estado: String?): String {
         "listo_entrega" -> "Listo para entrega"
         "entregado" -> "Entregado"
         "cancelado" -> "Cancelado"
+        "en_revision" -> "En revisión"
+        "recibido_en_almacen" -> "Recibido en almacén"
+        "en_consolidacion" -> "En consolidación"
+        "despachado" -> "Despachado"
+        "transito_internacional" -> "Tránsito internacional"
+        "llego_a_peru" -> "Llegó a Perú"
+        "desaduanaje" -> "Desaduanaje"
+        "pago_de_impuestos" -> "Pago de impuestos"
+        "liberado_por_aduanas" -> "Liberado por aduanas"
+        "en_distribucion" -> "En distribución"
+        "en_ruta" -> "En ruta"
         else -> limpio
             .replace("_", " ")
             .replaceFirstChar { it.uppercase() }

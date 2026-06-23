@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -11,8 +12,8 @@ android {
         applicationId = "com.jeanpier.peruchocourier"
         minSdk = 24
         targetSdk = 36
-        versionCode = 11
-        versionName = "1.0.10"
+        versionCode = 14
+        versionName = "1.0.13"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val mapsApiKey = rootProject.file("local.properties")
             .readLines()
@@ -73,6 +74,10 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("io.coil-kt:coil-gif:2.6.0")
     implementation(libs.androidx.ui)
+    implementation(platform("com.google.firebase:firebase-bom:34.0.0"))
+    implementation("com.google.firebase:firebase-messaging")
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
 
 
 

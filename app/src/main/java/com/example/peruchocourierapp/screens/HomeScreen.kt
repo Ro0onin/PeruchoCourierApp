@@ -1,7 +1,12 @@
 package com.example.peruchocourierapp.screens
 
+import android.app.Activity
+import android.util.Log
 import android.util.Patterns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -24,37 +29,37 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.example.peruchocourierapp.R
 import com.example.peruchocourierapp.SessionManager
 import com.example.peruchocourierapp.api.RetrofitClient
+import com.example.peruchocourierapp.models.BasicResponse
 import com.example.peruchocourierapp.models.LoginResponse
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.messaging.FirebaseMessaging
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import androidx.compose.foundation.Image
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.layout.ContentScale
-import com.example.peruchocourierapp.R
+import com.google.firebase.auth.FirebaseAuth
+
 
 private val BlueDark = Color(0xFF0D3280)
 private val BluePrimary = Color(0xFF1A4FBF)
 private val BlueMid = Color(0xFF2D6BE4)
-private val BlueLight = Color(0xFFE8EFFE)
 private val RedPrimary = Color(0xFFE02020)
-private val RedDark = Color(0xFFB01010)
 private val GrayBg = Color(0xFFF4F6FB)
 private val GrayBorder = Color(0xFFE8ECF4)
 private val GrayText = Color(0xFF6B7A99)
@@ -65,12 +70,160 @@ private val DarkText = Color(0xFF1A2340)
 fun LoginScreen(navController: NavController) {
     val context = LocalContext.current
     val sessionManager = SessionManager(context)
+    val firebaseAuth = FirebaseAuth.getInstance()
 
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var isGoogleLoading by remember { mutableStateOf(false) }
+
+    fun guardarTokenFcm(userEmail: String) {
+        FirebaseMessaging.getInstance().token
+            .addOnSuccessListener { token ->
+                RetrofitClient.instance.saveFcmToken(
+                    userEmail,
+                    token
+                ).enqueue(object : Callback<BasicResponse> {
+                    override fun onResponse(
+                        call: Call<BasicResponse>,
+                        response: Response<BasicResponse>
+                    ) {
+                        Log.d("FCM", "Token guardado: ${response.body()?.message}")
+                    }
+
+                    override fun onFailure(
+                        call: Call<BasicResponse>,
+                        t: Throwable
+                    ) {
+                        Log.e("FCM", "Error guardando token", t)
+                    }
+                })
+            }
+    }
+
+    val googleSignInClient = remember(context) {
+        GoogleSignIn.getClient(
+            context,
+            GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(context.getString(R.string.default_web_client_id))
+                .requestEmail()
+                .build()
+        )
+    }
+
+    val googleLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+
+        if (result.resultCode != Activity.RESULT_OK) {
+            isGoogleLoading = false
+            errorMessage = "Inicio con Google cancelado o no completado"
+            return@rememberLauncherForActivityResult
+        }
+
+        isGoogleLoading = true
+        errorMessage = ""
+
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+
+        task.addOnSuccessListener { account ->
+
+            val idToken = account.idToken
+
+            if (idToken.isNullOrEmpty()) {
+                isGoogleLoading = false
+                errorMessage = "No se obtuvo el token de Google"
+                return@addOnSuccessListener
+            }
+
+            val credential = GoogleAuthProvider.getCredential(idToken, null)
+
+            firebaseAuth.signInWithCredential(credential)
+                .addOnSuccessListener {
+                    isGoogleLoading = false
+
+                    val user = firebaseAuth.currentUser
+                    val userEmail = user?.email ?: ""
+
+                    if (userEmail.isBlank()) {
+                        errorMessage = "No se pudo obtener el correo de Google"
+                        return@addOnSuccessListener
+                    }
+
+                    RetrofitClient.instance.googleLogin(
+                        email = userEmail,
+                        name = user?.displayName ?: "",
+                        googleUid = user?.uid ?: ""
+                    ).enqueue(object : Callback<LoginResponse> {
+
+                        override fun onResponse(
+                            call: Call<LoginResponse>,
+                            response: Response<LoginResponse>
+                        ) {
+                            isGoogleLoading = false
+
+                            val result = response.body()
+
+                            if (response.isSuccessful && result?.success == true) {
+                                val phoneDb = result.phone ?: ""
+                                val dniDb = result.dni ?: ""
+                                val roleDb = result.role ?: "cliente"
+                                val nameDb = result.name ?: user?.displayName ?: ""
+
+                                sessionManager.saveUserSession(
+                                    name = nameDb,
+                                    email = userEmail,
+                                    phone = phoneDb,
+                                    role = roleDb,
+                                    dni = dniDb
+                                )
+
+                                guardarTokenFcm(userEmail)
+
+                                if (phoneDb.isBlank() || dniDb.isBlank()) {
+                                    navController.navigate("completar_perfil_google/$userEmail") {
+                                        popUpTo("login") { inclusive = true }
+                                        launchSingleTop = true
+                                    }
+                                } else {
+                                    navController.navigate("client_lobby") {
+                                        popUpTo("login") { inclusive = true }
+                                        launchSingleTop = true
+                                    }
+                                }
+                            } else {
+                                errorMessage = result?.message ?: "No se pudo validar la cuenta Google"
+                            }
+                        }
+
+                        override fun onFailure(call: Call<LoginResponse>, t: Throwable) {
+                            isGoogleLoading = false
+                            errorMessage = "Error conectando con servidor: ${t.message}"
+                        }
+                    })
+
+                    guardarTokenFcm(userEmail)
+
+                    navController.navigate("completar_perfil_google/$userEmail") {
+                        popUpTo("login") { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+                .addOnFailureListener { e ->
+                    isGoogleLoading = false
+                    errorMessage = "Firebase Auth error: ${e.message}"
+                    Log.e("GOOGLE_LOGIN", "Firebase error", e)
+                }
+        }
+
+        task.addOnFailureListener { e ->
+            isGoogleLoading = false
+            errorMessage = "Google Sign-In error: ${e.message}"
+            Log.e("GOOGLE_LOGIN", "Google error", e)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -217,16 +370,30 @@ fun LoginScreen(navController: NavController) {
                                         val result = response.body()
 
                                         if (result?.success == true) {
+                                            val userEmail = result.email ?: cleanEmail
+
                                             sessionManager.saveUserSession(
                                                 name = result.name ?: "",
-                                                email = result.email ?: cleanEmail,
+                                                email = userEmail,
                                                 phone = result.phone ?: "",
                                                 role = result.role ?: "cliente",
                                                 dni = result.dni ?: ""
                                             )
 
-                                            navController.navigate("role_selection") {
-                                                popUpTo("home") { inclusive = true }
+                                            guardarTokenFcm(userEmail)
+
+                                            val role = result.role ?: "cliente"
+
+                                            if (role == "repartidor") {
+                                                navController.navigate("driver_lobby") {
+                                                    popUpTo("login") { inclusive = true }
+                                                    launchSingleTop = true
+                                                }
+                                            } else {
+                                                navController.navigate("client_lobby") {
+                                                    popUpTo("login") { inclusive = true }
+                                                    launchSingleTop = true
+                                                }
                                             }
                                         } else {
                                             errorMessage =
@@ -257,7 +424,7 @@ fun LoginScreen(navController: NavController) {
                     containerColor = RedPrimary,
                     contentColor = Color.White
                 ),
-                enabled = !isLoading
+                enabled = !isLoading && !isGoogleLoading
             ) {
                 Icon(Icons.Outlined.Login, null)
                 Spacer(modifier = Modifier.width(6.dp))
@@ -266,6 +433,55 @@ fun LoginScreen(navController: NavController) {
                     fontSize = 15.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = {
+                    isGoogleLoading = true
+                    errorMessage = ""
+
+                    firebaseAuth.signOut()
+
+                    googleSignInClient.signOut().addOnCompleteListener {
+                        googleLauncher.launch(googleSignInClient.signInIntent)
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(28.dp),
+                border = BorderStroke(0.dp, Color.Transparent),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color(0xFFF1F3F4),
+                    contentColor = Color(0xFF202124)
+                ),
+                enabled = !isLoading && !isGoogleLoading
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_google),
+                        contentDescription = "Google",
+                        modifier = Modifier.size(24.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Text(
+                        text = if (isGoogleLoading)
+                            "Conectando con Google..."
+                        else
+                            "Continuar con Google",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF202124)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))

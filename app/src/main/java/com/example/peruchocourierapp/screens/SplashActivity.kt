@@ -43,10 +43,22 @@ fun SplashScreen(navController: NavController) {
     )
 
     LaunchedEffect(Unit) {
+
         delay(3000)
 
-        val destino = when {
-            sessionManager.getUserRole() == "repartidor" -> "driver_lobby"
+        if (!sessionManager.isLoggedIn()) {
+
+            navController.navigate("login") {
+                popUpTo("splash") { inclusive = true }
+            }
+
+            return@LaunchedEffect
+        }
+
+        sessionManager.updateLastActivity()
+
+        val destino = when (sessionManager.getUserRole()) {
+            "repartidor" -> "driver_lobby"
             else -> "client_lobby"
         }
 

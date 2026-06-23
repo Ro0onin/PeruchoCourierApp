@@ -252,4 +252,35 @@ interface ApiService {
         @Field("order_id") orderId: Int,
         @Field("user_email") userEmail: String
     ): Call<BasicResponse>
+
+    @FormUrlEncoded
+    @POST("save_fcm_token.php")
+    fun saveFcmToken(
+        @Field("email") email: String,
+        @Field("fcm_token") fcmToken: String
+    ): Call<BasicResponse>
+
+    @FormUrlEncoded
+    @POST("google_login.php")
+    fun googleLogin(
+        @Field("email") email: String,
+        @Field("name") name: String,
+        @Field("google_uid") googleUid: String
+    ): Call<LoginResponse>
+
+    @Multipart
+    @POST("complete_google_profile.php")
+    fun completeGoogleProfile(
+        @Part("email") email: RequestBody,
+        @Part("dni") dni: RequestBody,
+        @Part("phone") phone: RequestBody,
+        @Part("dni_direccion") dniDireccion: RequestBody,
+        @Part("dni_provincia") dniProvincia: RequestBody,
+        @Part dniFront: MultipartBody.Part,
+        @Part dniBack: MultipartBody.Part
+    ): Call<BasicResponse>
+
+
+
+
 }

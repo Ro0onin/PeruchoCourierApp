@@ -1,61 +1,80 @@
 package com.example.peruchocourierapp
 
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import com.example.peruchocourierapp.ui.theme.*
-import androidx.navigation.compose.*
-import androidx.navigation.NavHostController
-import androidx.compose.runtime.*
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import androidx.compose.ui.platform.LocalContext
-import com.example.peruchocourierapp.screens.LobbyScreen
-import com.example.peruchocourierapp.screens.RoleSelectionScreen
-import com.example.peruchocourierapp.screens.ClientLobbyScreen
-import com.example.peruchocourierapp.screens.DriverLobbyScreen
-import com.example.peruchocourierapp.screens.RegisterScreen
-import com.example.peruchocourierapp.screens.MisPedidosScreen
-import com.example.peruchocourierapp.screens.PedidosDisponiblesScreen
-import com.example.peruchocourierapp.screens.PedidoEnCursoScreen
-import com.example.peruchocourierapp.screens.LoginScreen
-import com.example.peruchocourierapp.screens.PedidoInternacionalScreen
-import com.example.peruchocourierapp.screens.PedidoNacionalScreen
-import com.example.peruchocourierapp.screens.MapPickerScreen
-import com.example.peruchocourierapp.screens.SeguimientoPedidoScreen
-import com.example.peruchocourierapp.screens.PerfilClienteScreen
-import com.example.peruchocourierapp.screens.PerfilRepartidorScreen
-import com.example.peruchocourierapp.screens.MisEntregasScreen
-import android.content.pm.PackageManager
-import android.util.Log
-import com.example.peruchocourierapp.screens.ChatPedidoScreen
-import com.example.peruchocourierapp.screens.SeguimientoPedidoClienteScreen
-import com.example.peruchocourierapp.screens.SeleccionarPedidoSeguimientoScreen
-import com.example.peruchocourierapp.screens.SplashScreen
-import com.example.peruchocourierapp.screens.VerifySmsScreen
-
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.*
+import com.example.peruchocourierapp.screens.*
+import com.example.peruchocourierapp.ui.theme.*
+import com.google.firebase.messaging.FirebaseMessaging
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        var pendingOpenChat by mutableStateOf(false)
+        var pendingOrderId by mutableStateOf(0)
+        var pendingReceiverEmail by mutableStateOf("")
+    }
+
+    private fun handleNotificationIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra("open_chat", false) == true) {
+            pendingOpenChat = true
+            pendingOrderId = intent.getStringExtra("order_id")?.toIntOrNull() ?: 0
+            pendingReceiverEmail = intent.getStringExtra("receiver_email") ?: ""
+
+            Log.d(
+                "NOTIFICATION_CLICK",
+                "open_chat=true orderId=$pendingOrderId receiver=$pendingReceiverEmail"
+            )
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleNotificationIntent(intent)
+    }
+
     @Composable
     fun AppNavigation() {
-
         val navController = rememberNavController()
         val context = LocalContext.current
         val sessionManager = SessionManager(context)
 
-        var isLoggedIn by remember {
-            mutableStateOf(sessionManager.isLoggedIn())
+        LaunchedEffect(
+            pendingOpenChat,
+            pendingOrderId,
+            pendingReceiverEmail
+        ) {
+            if (
+                pendingOpenChat &&
+                pendingOrderId > 0 &&
+                pendingReceiverEmail.isNotBlank()
+            ) {
+                navController.navigate(
+                    "chat_pedido/$pendingOrderId/$pendingReceiverEmail"
+                ) {
+                    launchSingleTop = true
+                }
+
+                pendingOpenChat = false
+            }
         }
 
         val startDestination = "splash"
@@ -64,7 +83,6 @@ class MainActivity : ComponentActivity() {
             navController = navController,
             startDestination = startDestination
         ) {
-
             composable("login") {
                 LoginScreen(navController)
             }
@@ -97,7 +115,6 @@ class MainActivity : ComponentActivity() {
                 PedidoNacionalScreen(navController)
             }
 
-
             composable("mis_pedidos") {
                 MisPedidosScreen(navController)
             }
@@ -109,7 +126,6 @@ class MainActivity : ComponentActivity() {
                     driverEmailParam = driverEmail
                 )
             }
-
 
             composable("perfil_cliente") {
                 PerfilClienteScreen(navController)
@@ -138,12 +154,15 @@ class MainActivity : ComponentActivity() {
             composable("register") {
                 RegisterScreen(navController)
             }
+
             composable("lobby") {
                 LobbyScreen()
             }
+
             composable("seleccionar_pedido_seguimiento") {
                 SeleccionarPedidoSeguimientoScreen(navController)
             }
+
             composable("seguimiento_cliente/{orderId}") { backStackEntry ->
                 val orderId = backStackEntry.arguments
                     ?.getString("orderId")
@@ -154,6 +173,7 @@ class MainActivity : ComponentActivity() {
                     orderIdParam = orderId
                 )
             }
+
             composable("verify_sms/{phone}/{name}/{email}/{dni}") { backStackEntry ->
                 val phone = backStackEntry.arguments?.getString("phone") ?: ""
                 val name = backStackEntry.arguments?.getString("name") ?: ""
@@ -168,12 +188,18 @@ class MainActivity : ComponentActivity() {
                     dniParam = dni
                 )
             }
+
             composable("splash") {
                 SplashScreen(navController)
             }
+
             composable("chat_pedido/{orderId}/{receiverEmail}") { backStackEntry ->
-                val orderId = backStackEntry.arguments?.getString("orderId")?.toIntOrNull() ?: 0
-                val receiverEmail = backStackEntry.arguments?.getString("receiverEmail") ?: ""
+                val orderId = backStackEntry.arguments
+                    ?.getString("orderId")
+                    ?.toIntOrNull() ?: 0
+
+                val receiverEmail = backStackEntry.arguments
+                    ?.getString("receiverEmail") ?: ""
 
                 ChatPedidoScreen(
                     navController = navController,
@@ -181,11 +207,31 @@ class MainActivity : ComponentActivity() {
                     receiverEmail = receiverEmail
                 )
             }
+            composable("completar_perfil_google/{email}") { backStackEntry ->
+                val email = backStackEntry.arguments?.getString("email") ?: ""
+
+                CompletarPerfilGoogleScreen(
+                    navController = navController,
+                    emailParam = email
+                )
+            }
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        handleNotificationIntent(intent)
+
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            if (!task.isSuccessful) {
+                Log.e("FCM_TOKEN", "Error obteniendo token", task.exception)
+                return@addOnCompleteListener
+            }
+
+            val token = task.result
+            Log.d("FCM_TOKEN", token)
+        }
 
         try {
             val appInfo = packageManager.getApplicationInfo(
@@ -213,7 +259,6 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun HomeScreen(navController: NavHostController) {
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -222,8 +267,6 @@ fun HomeScreen(navController: NavHostController) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-
-        // 🔹 LOGO
         Image(
             painter = painterResource(id = R.drawable.logo_perucho2),
             contentDescription = "Logo Perucho Courier",
@@ -245,7 +288,7 @@ fun HomeScreen(navController: NavHostController) {
         Spacer(modifier = Modifier.height(15.dp))
 
         OutlinedButton(
-            onClick = {navController.navigate("register")},
+            onClick = { navController.navigate("register") },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Registrarse")
@@ -253,10 +296,8 @@ fun HomeScreen(navController: NavHostController) {
     }
 }
 
-
 @Composable
 fun BaseScreen(titulo: String, navController: NavController) {
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -264,7 +305,6 @@ fun BaseScreen(titulo: String, navController: NavController) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-
         Text(
             text = titulo,
             fontSize = 28.sp
@@ -281,5 +321,5 @@ fun BaseScreen(titulo: String, navController: NavController) {
             Text("Volver")
         }
     }
-
 }
+

@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">PeruchoCourierApp</string>
+    <string name="default_web_client_id">147805546500-br6apar1e0j9bmveh1mcde5kf0l06v3t.apps.googleusercontent.com</string>
 </resources>
