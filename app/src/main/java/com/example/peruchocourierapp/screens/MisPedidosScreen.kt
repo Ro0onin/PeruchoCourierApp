@@ -31,7 +31,9 @@ import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Straighten
 import androidx.compose.material.icons.outlined.TwoWheeler
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -41,6 +43,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -67,12 +70,16 @@ import androidx.navigation.NavController
 import com.example.peruchocourierapp.R
 import com.example.peruchocourierapp.SessionManager
 import com.example.peruchocourierapp.api.RetrofitClient
+import com.example.peruchocourierapp.models.BasicResponse
 import com.example.peruchocourierapp.models.GetOrdersResponse
 import com.example.peruchocourierapp.models.Order
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import kotlinx.coroutines.launch
 import java.text.Normalizer
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 private val PcBlue = Color(0xFF1A4FBF)
 private val PcBlueDark = Color(0xFF0B2E78)
 private val PcBlueMid = Color(0xFF2D6BE4)
@@ -102,35 +109,47 @@ fun MisPedidosScreen(navController: NavController) {
     var errorMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(true) }
     var selectedOrder by remember { mutableStateOf<Order?>(null) }
+    var showCancelDialog by remember { mutableStateOf(false) }
+    var orderToCancel by remember { mutableStateOf<Order?>(null) }
+    var isCancelling by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
+    fun cargarPedidos() {
         val userEmail = sessionManager.getUserEmail()
 
         if (userEmail.isNullOrEmpty()) {
             errorMessage = "No se encontró la sesión del usuario"
             isLoading = false
-        } else {
-            RetrofitClient.instance.getOrders(userEmail)
-                .enqueue(object : Callback<GetOrdersResponse> {
-                    override fun onResponse(
-                        call: Call<GetOrdersResponse>,
-                        response: Response<GetOrdersResponse>
-                    ) {
-                        isLoading = false
-
-                        if (response.isSuccessful && response.body()?.success == true) {
-                            orders = response.body()?.orders.orEmpty()
-                        } else {
-                            errorMessage = "No se pudieron cargar los pedidos"
-                        }
-                    }
-
-                    override fun onFailure(call: Call<GetOrdersResponse>, t: Throwable) {
-                        isLoading = false
-                        errorMessage = "Error de conexión: ${t.message}"
-                    }
-                })
+            return
         }
+
+        isLoading = true
+        errorMessage = ""
+
+        RetrofitClient.instance.getOrders(userEmail)
+            .enqueue(object : Callback<GetOrdersResponse> {
+                override fun onResponse(
+                    call: Call<GetOrdersResponse>,
+                    response: Response<GetOrdersResponse>
+                ) {
+                    isLoading = false
+
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        orders = response.body()?.orders.orEmpty()
+                    } else {
+                        errorMessage = "No se pudieron cargar los pedidos"
+                    }
+                }
+
+                override fun onFailure(call: Call<GetOrdersResponse>, t: Throwable) {
+                    isLoading = false
+                    errorMessage = "Error de conexión: ${t.message}"
+                }
+            })
+    }
+
+    LaunchedEffect(Unit) {
+        cargarPedidos()
     }
 
     val filteredOrders = when (selectedFilter) {
@@ -239,9 +258,124 @@ fun MisPedidosScreen(navController: NavController) {
                     context.startActivity(
                         Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$numero?text=$mensaje"))
                     )
+                },
+                onCancel = {
+                    orderToCancel = selectedOrder
+                    showCancelDialog = true
                 }
             )
         }
+    }
+
+    if (showCancelDialog && orderToCancel != null) {
+        val pedido = orderToCancel!!
+        val estadoPedido = normalizarEstado(pedido.estado)
+        val penalidad = calcularPenalidadCancelacion(estadoPedido)
+
+        AlertDialog(
+            onDismissRequest = {
+                if (!isCancelling) {
+                    showCancelDialog = false
+                    orderToCancel = null
+                }
+            },
+            title = {
+                Text(
+                    text = "Cancelar pedido #${pedido.id ?: 0}",
+                    fontWeight = FontWeight.Black,
+                    color = Dark
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = if (penalidad > 0.0) {
+                            "Este pedido ya inició su proceso. Se aplicará una penalidad operativa de S/ ${"%.2f".format(penalidad)}."
+                        } else {
+                            "Este pedido aún puede cancelarse sin penalidad."
+                        },
+                        color = Muted,
+                        fontSize = 14.sp,
+                        lineHeight = 19.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = "¿Deseas continuar con la cancelación?",
+                        color = Dark,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !isCancelling,
+                    onClick = {
+                        val userEmail = sessionManager.getUserEmail()
+                        val pedidoId = pedido.id ?: 0
+
+                        if (userEmail.isNullOrBlank() || pedidoId <= 0) {
+                            showCancelDialog = false
+                            orderToCancel = null
+                            errorMessage = "No se pudo cancelar el pedido"
+                            return@TextButton
+                        }
+
+                        scope.launch {
+                            try {
+                                isCancelling = true
+
+                                val response: BasicResponse = RetrofitClient.instance.cancelOrder(
+                                    envioId = pedidoId,
+                                    userEmail = userEmail,
+                                    motivo = "Cancelado por el cliente desde la app"
+                                )
+
+                                isCancelling = false
+                                showCancelDialog = false
+                                orderToCancel = null
+                                selectedOrder = null
+
+                                if (response.success) {
+                                    cargarPedidos()
+                                } else {
+                                    errorMessage = response.message ?: "No se pudo cancelar el pedido"
+                                }
+                            } catch (e: Exception) {
+                                isCancelling = false
+                                showCancelDialog = false
+                                orderToCancel = null
+                                errorMessage = "Error al cancelar: ${e.message}"
+                            }
+                        }
+                    }
+                ) {
+                    if (isCancelling) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = PcRed
+                        )
+                    } else {
+                        Text("Sí, cancelar", color = PcRed, fontWeight = FontWeight.Black)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !isCancelling,
+                    onClick = {
+                        showCancelDialog = false
+                        orderToCancel = null
+                    }
+                ) {
+                    Text("No")
+                }
+            },
+            containerColor = Color.White
+        )
     }
 }
 
@@ -627,10 +761,10 @@ private fun StatusBadge(estado: String) {
             label = "Entregado"
         }
 
-        "cancelado" -> {
+        "cancelado", "cancelado_cliente" -> {
             bg = DangerBg
             fg = DangerText
-            label = "Cancelado"
+            label = if (estado == "cancelado_cliente") "Cancelado por cliente" else "Cancelado"
         }
 
         else -> {
@@ -732,7 +866,8 @@ private fun PedidoDetalleSheet(
     order: Order,
     onClose: () -> Unit,
     onTrack: () -> Unit,
-    onSupport: () -> Unit
+    onSupport: () -> Unit,
+    onCancel: () -> Unit
 ) {
     val context = LocalContext.current
     val isNacional = order.tipo_envio == "nacional" || order.tipo_envio.isNullOrBlank()
@@ -833,7 +968,7 @@ private fun PedidoDetalleSheet(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        if (isNacional && estado != "entregado" && estado != "cancelado") {
+        if (isNacional && estado != "entregado" && estado != "cancelado" && estado != "cancelado_cliente") {
             Button(
                 onClick = onTrack,
                 modifier = Modifier
@@ -845,6 +980,23 @@ private fun PedidoDetalleSheet(
                 Icon(Icons.Outlined.LocationOn, null, modifier = Modifier.size(19.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Rastrear pedido", fontWeight = FontWeight.Black)
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+
+        if (puedeCancelarPedido(estado)) {
+            Button(
+                onClick = onCancel,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = PcRed)
+            ) {
+                Icon(Icons.Outlined.Circle, null, modifier = Modifier.size(19.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Cancelar pedido", fontWeight = FontWeight.Black)
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -1389,6 +1541,23 @@ private fun normalizarEstado(estado: String?): String {
         .replace("-", "_")
 }
 
+private fun puedeCancelarPedido(estado: String): Boolean {
+    return estado !in listOf(
+        "entregado",
+        "finalizado",
+        "cancelado",
+        "cancelado_cliente"
+    )
+}
+
+private fun calcularPenalidadCancelacion(estado: String): Double {
+    return when (estado) {
+        "asignado", "recogiendo", "recogido" -> 2.90
+        "en_camino", "en_transito", "transito" -> 5.00
+        else -> 0.00
+    }
+}
+
 private fun estadoLegible(estado: String?): String {
     val limpio = normalizarEstado(estado)
 
@@ -1401,6 +1570,7 @@ private fun estadoLegible(estado: String?): String {
         "listo_entrega" -> "Listo para entrega"
         "entregado" -> "Entregado"
         "cancelado" -> "Cancelado"
+        "cancelado_cliente" -> "Cancelado por cliente"
         "en_revision" -> "En revisión"
         "recibido_en_almacen" -> "Recibido en almacén"
         "en_consolidacion" -> "En consolidación"

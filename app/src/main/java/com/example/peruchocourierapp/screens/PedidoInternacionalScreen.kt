@@ -5,10 +5,12 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -23,12 +25,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
+import com.example.peruchocourierapp.R
 import com.example.peruchocourierapp.SessionManager
 import com.example.peruchocourierapp.api.RetrofitClient
 import com.example.peruchocourierapp.models.BasicResponse
@@ -88,6 +94,7 @@ fun PedidoInternacionalScreen(navController: NavController) {
     var pdfNombre by remember { mutableStateOf("Ningún archivo seleccionado") }
     var isSubmitting by remember { mutableStateOf(false) }
     var showAduanaDialog by remember { mutableStateOf(false) }
+    var showTrackingHelp by remember { mutableStateOf(false) }
 
     val totalEstimado = (pesoEstimado.toDoubleOrNull() ?: 0.0) * precioPorKg
 
@@ -177,17 +184,21 @@ fun PedidoInternacionalScreen(navController: NavController) {
                 iconBg = IntlRedLight,
                 iconTint = IntlRed
             ) {
-                IntlInput(
-                    label = "NÚMERO DE TRACKING",
-                    value = tracking,
-                    placeholder = "Ej: 1Z999AA10123456784",
-                    icon = Icons.Outlined.QrCode2,
-                    onValueChange = {
-                        tracking = it
-                            .uppercase()
-                            .replace(" ", "")
+                TrackingInputCard(
+                    tracking = tracking,
+                    onTrackingChange = {
+                        tracking = it.uppercase().replace(" ", "")
+                    },
+                    onHelpClick = {
+                        showTrackingHelp = true
                     }
                 )
+
+                TrackingInfoHintCard(
+                    onClick = { showTrackingHelp = true }
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
 
                 IntlDateInput(
                     label = "FECHA ESTIMADA DE LLEGADA",
@@ -497,6 +508,12 @@ fun PedidoInternacionalScreen(navController: NavController) {
             shape = RoundedCornerShape(20.dp)
         )
     }
+
+    if (showTrackingHelp) {
+        TrackingHelpDialog(
+            onDismiss = { showTrackingHelp = false }
+        )
+    }
 }
 
 @Composable
@@ -552,7 +569,7 @@ private fun IntlTopBar(navController: NavController) {
                 )
 
                 Text(
-                    text = "USA → Perú",
+                    text = "USA / China → Perú",
                     color = Color.White.copy(alpha = 0.68f),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
@@ -653,6 +670,238 @@ private fun IntlSectionCard(
         Spacer(modifier = Modifier.height(14.dp))
 
         content()
+    }
+}
+
+@Composable
+private fun TrackingInputCard(
+    tracking: String,
+    onTrackingChange: (String) -> Unit,
+    onHelpClick: () -> Unit
+) {
+    Text(
+        text = "NÚMERO DE TRACKING",
+        color = IntlGrayText,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Black,
+        letterSpacing = 0.5.sp
+    )
+
+    Spacer(modifier = Modifier.height(5.dp))
+
+    OutlinedTextField(
+        value = tracking,
+        onValueChange = onTrackingChange,
+        singleLine = true,
+        leadingIcon = {
+            Icon(
+                imageVector = Icons.Outlined.QrCode2,
+                contentDescription = null,
+                tint = IntlGrayLight,
+                modifier = Modifier.size(20.dp)
+            )
+        },
+        trailingIcon = {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(IntlBlueLight)
+                    .clickable { onHelpClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "?",
+                    color = IntlBlue,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Black
+                )
+            }
+        },
+        placeholder = {
+            Text(
+                text = "Ej: 9400111899223754906185",
+                color = IntlGrayLight,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        shape = RoundedCornerShape(12.dp),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+        colors = intlFieldColors()
+    )
+
+    Spacer(modifier = Modifier.height(10.dp))
+}
+
+@Composable
+private fun TrackingInfoHintCard(
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFFF2F6FF))
+            .clickable { onClick() }
+            .padding(14.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(IntlBlue),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Info,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "¿Dónde encuentro mi tracking number?",
+                color = IntlBlue,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Black
+            )
+
+            Spacer(modifier = Modifier.height(3.dp))
+
+            Text(
+                text = "Presiona el signo de interrogación para ver ejemplos de Amazon y eBay.",
+                color = IntlGrayText,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@Composable
+private fun TrackingHelpDialog(
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 720.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "¿Dónde encuentro mi Tracking Number?",
+                            color = IntlDark,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Black
+                        )
+
+                        Text(
+                            text = "Ejemplos de Amazon y eBay",
+                            color = IntlGrayText,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Outlined.Close,
+                            contentDescription = "Cerrar",
+                            tint = IntlDark
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Image(
+                    painter = painterResource(id = R.drawable.tracking_help),
+                    contentDescription = "Ejemplo de ubicación de tracking number",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp)),
+                    contentScale = ContentScale.FillWidth
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(IntlRedLight)
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Lightbulb,
+                        contentDescription = null,
+                        tint = IntlRed,
+                        modifier = Modifier.size(22.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Column {
+                        Text(
+                            text = "Importante",
+                            color = IntlRed,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black
+                        )
+
+                        Text(
+                            text = "Copia y pega el número de seguimiento exactamente como aparece en Amazon o eBay para un mejor rastreo de tu pedido.",
+                            color = IntlDark,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = IntlBlue,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text(
+                        text = "Entendido",
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+        }
     }
 }
 

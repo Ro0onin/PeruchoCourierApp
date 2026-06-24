@@ -215,6 +215,9 @@ class MainActivity : ComponentActivity() {
                     emailParam = email
                 )
             }
+            composable("forgot_password") {
+                ForgotPasswordScreen(navController)
+            }
         }
     }
 

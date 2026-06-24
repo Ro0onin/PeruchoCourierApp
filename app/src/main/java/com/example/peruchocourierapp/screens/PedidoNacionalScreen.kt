@@ -92,6 +92,7 @@ fun PedidoNacionalScreen(navController: NavController) {
     var selectedVehicle by remember { mutableStateOf("Motorizado") }
     var metodoPago by remember { mutableStateOf("Yape") }
     var pesoKg by remember { mutableStateOf("") }
+    var cantidadBultos by remember { mutableStateOf("1") }
     var packageSize by remember { mutableStateOf("Pequeño - hasta 5 kg") }
     var fotoPaqueteUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -363,10 +364,12 @@ fun PedidoNacionalScreen(navController: NavController) {
 
             ConfirmBar(
                 total = totalSeleccionado,
+                cantidadBultos = cantidadBultos,
                 isSubmitting = isSubmitting,
                 onDetailsClick = { showDetailsSheet = true },
                 onConfirm = {
                     val pesoValidado = pesoKg.replace(",", ".").toDoubleOrNull()
+                    val bultosValidados = cantidadBultos.toIntOrNull()
 
                     when {
                         pickupAddress.isBlank() || dropoffAddress.isBlank() -> {
@@ -409,6 +412,10 @@ fun PedidoNacionalScreen(navController: NavController) {
                             errorMessage = "Agrega una foto del paquete"
                             showDetailsSheet = true
                         }
+                        bultosValidados == null || bultosValidados <= 0 -> {
+                            errorMessage = "Ingresa la cantidad de cajas o bultos"
+                            showDetailsSheet = true
+                        }
 
                         else -> {
                             val userEmail = sessionManager.getUserEmail()
@@ -447,6 +454,7 @@ fun PedidoNacionalScreen(navController: NavController) {
                                     categoria = textPart(itemCategory),
                                     comentariosRepartidor = textPart(comentarioRepartidor),
                                     tamanoPaquete = textPart(packageSize),
+                                    cantidadBultos = textPart(cantidadBultos),
                                     pesoKg = textPart("%.2f".format(pesoValidado)),
                                     tipoVehiculo = textPart(
                                         when (selectedVehicle) {
@@ -534,6 +542,14 @@ fun PedidoNacionalScreen(navController: NavController) {
                     onValueChange = { pesoKg = it },
                     label = "Peso aproximado del paquete (kg)",
                     keyboardType = KeyboardType.Decimal
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                LightField(
+                    value = cantidadBultos,
+                    onValueChange = { cantidadBultos = it.filter { c -> c.isDigit() } },
+                    label = "Cantidad de cajas o bultos",
+                    keyboardType = KeyboardType.Number
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -975,7 +991,7 @@ private fun VehicleCard(
 
                 Text(
                     text = when (name) {
-                        "Motorizado" -> "S/9 tarifa plana hasta 15 km"
+                        "Motorizado" -> "S/10 tarifa plana hasta 15 km"
                         else -> ""
                     },
                     color = Color(0xFF22C55E),
@@ -1062,6 +1078,7 @@ private fun ZoneNote() {
 @Composable
 private fun ConfirmBar(
     total: Double,
+    cantidadBultos: String,
     isSubmitting: Boolean,
     onDetailsClick: () -> Unit,
     onConfirm: () -> Unit
@@ -1099,6 +1116,27 @@ private fun ConfirmBar(
         ) {
             Text("Total estimado", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             Text("S/ ${"%.2f".format(total)}", color = Dark, fontSize = 18.sp, fontWeight = FontWeight.Black)
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Cajas / bultos",
+                color = Muted,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = cantidadBultos.ifBlank { "1" },
+                color = Dark,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Black
+            )
         }
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -1149,11 +1187,14 @@ private fun calcularPrecioVehiculo(
     distanciaKm: Double
 ): Double {
     return when (vehiculo) {
-        "Motorizado" -> if (distanciaKm <= 15.0) 9.0 else 9.0 + ((distanciaKm - 15.0) * 1.0)
-        "Auto / Sedan" -> if (distanciaKm <= 15.0) 20.0 else 20.0 + ((distanciaKm - 15.0) * 1.6)
+        "Motorizado" -> if (distanciaKm <= 15.0) 10.0 else 10.0 + ((distanciaKm - 15.0) * 1.0)
+        "Auto / Sedan" -> if (distanciaKm <= 15.0)
+            20.0
+        else
+            20.0 + ((distanciaKm - 15.0) * 2.0)
         "Van / Minivan" -> if (distanciaKm <= 15.0) 35.0 else 35.0 + ((distanciaKm - 15.0) * 3.0)
         "Camión" -> if (distanciaKm <= 15.0) 80.0 else 80.0 + ((distanciaKm - 15.0) * 5.0)
-        else -> 9.0
+        else -> 10.0
     }
 }
 

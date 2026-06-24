@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -203,13 +204,6 @@ fun LoginScreen(navController: NavController) {
                             errorMessage = "Error conectando con servidor: ${t.message}"
                         }
                     })
-
-                    guardarTokenFcm(userEmail)
-
-                    navController.navigate("completar_perfil_google/$userEmail") {
-                        popUpTo("login") { inclusive = true }
-                        launchSingleTop = true
-                    }
                 }
                 .addOnFailureListener { e ->
                     isGoogleLoading = false
@@ -321,7 +315,11 @@ fun LoginScreen(navController: NavController) {
                 color = BluePrimary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        navController.navigate("forgot_password")
+                    },
                 textAlign = TextAlign.End
             )
 

@@ -89,6 +89,7 @@ interface ApiService {
         @Part("metodo_pago") metodoPago: RequestBody,
         @Part("distancia_km") distanciaKm: RequestBody,
         @Part("total") total: RequestBody,
+        @Part("cantidad_bultos") cantidadBultos: RequestBody,
 
         @Part fotoPaquete: MultipartBody.Part
     ): Call<BasicResponse>
@@ -279,6 +280,20 @@ interface ApiService {
         @Part dniFront: MultipartBody.Part,
         @Part dniBack: MultipartBody.Part
     ): Call<BasicResponse>
+
+    @FormUrlEncoded
+    @POST("forgot_password.php")
+    fun forgotPassword(
+        @Field("email") email: String
+    ): Call<BasicResponse>
+
+    @FormUrlEncoded
+    @POST("cancel_order.php")
+    suspend fun cancelOrder(
+        @Field("envio_id") envioId: Int,
+        @Field("user_email") userEmail: String,
+        @Field("motivo") motivo: String
+    ): BasicResponse
 
 
 
