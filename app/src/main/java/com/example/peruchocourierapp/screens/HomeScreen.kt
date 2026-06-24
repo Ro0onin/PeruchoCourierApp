@@ -230,7 +230,7 @@ fun LoginScreen(navController: NavController) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(260.dp)
+                .height(245.dp)
                 .background(
                     Brush.linearGradient(
                         listOf(BlueDark, BluePrimary, BlueMid)
@@ -248,12 +248,22 @@ fun LoginScreen(navController: NavController) {
                     .background(Color.White.copy(alpha = 0.06f))
             )
 
+            Box(
+                modifier = Modifier
+                    .size(120.dp)
+                    .align(Alignment.TopEnd)
+                    .offset(x = 38.dp, y = (-26).dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.055f))
+            )
+
             Image(
                 painter = painterResource(id = R.drawable.logo_perucho2),
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(260.dp),
+                    .height(225.dp)
+                    .padding(horizontal = 24.dp),
                 contentScale = ContentScale.Fit
             )
         }
@@ -261,7 +271,7 @@ fun LoginScreen(navController: NavController) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 22.dp, vertical = 26.dp),
+                .padding(horizontal = 22.dp, vertical = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
@@ -433,7 +443,11 @@ fun LoginScreen(navController: NavController) {
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+
+            DividerWithText()
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             OutlinedButton(
                 onClick = {
@@ -448,45 +462,45 @@ fun LoginScreen(navController: NavController) {
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(28.dp),
-                border = BorderStroke(0.dp, Color.Transparent),
+                    .height(54.dp),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.5.dp, GrayBorder),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color(0xFFF1F3F4),
+                    containerColor = Color.White,
                     contentColor = Color(0xFF202124)
                 ),
                 enabled = !isLoading && !isGoogleLoading
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_google),
+                    contentDescription = "Google",
+                    modifier = Modifier.size(22.dp)
+                )
 
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_google),
-                        contentDescription = "Google",
-                        modifier = Modifier.size(24.dp)
-                    )
+                Spacer(modifier = Modifier.width(10.dp))
 
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    Text(
-                        text = if (isGoogleLoading)
-                            "Conectando con Google..."
-                        else
-                            "Continuar con Google",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF202124)
-                    )
-                }
+                Text(
+                    text = if (isGoogleLoading)
+                        "Conectando con Google..."
+                    else
+                        "Continuar con Google",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF202124)
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            DividerWithText()
+            Text(
+                text = "¿No tienes cuenta?",
+                color = GrayText,
+                fontSize = 13.sp,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
+            )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             OutlinedButton(
                 onClick = { navController.navigate("register") },
@@ -542,7 +556,7 @@ private fun PeruchoTextField(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(13.dp),
             leadingIcon = leadingIcon,
             trailingIcon = {
                 if (isPassword && onTogglePasswordVisibility != null) {
