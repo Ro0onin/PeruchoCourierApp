@@ -1,11 +1,8 @@
 package com.example.peruchocourierapp.screens
 
 import androidx.compose.animation.core.tween
-
 import androidx.compose.animation.core.FastOutSlowInEasing
-
 import androidx.compose.animation.core.Animatable
-
 import android.location.Location
 import android.net.Uri
 import android.graphics.Bitmap
@@ -15,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -33,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,13 +60,13 @@ import retrofit2.Response
 import java.io.File
 import java.io.FileOutputStream
 
-
 private val Dark = Color(0xFF1A1A1A)
 private val Red = Color(0xFFE02020)
 private val Green = Color(0xFF22C55E)
 private val Muted = Color(0xFF888888)
 private val LightBg = Color(0xFFF5F5F5)
 private val Border = Color(0xFFF0F0F0)
+private val Blue = Color(0xFF1A4FBF)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,36 +99,40 @@ fun PedidoNacionalScreen(navController: NavController) {
     var distanciaKm by remember { mutableDoubleStateOf(0.0) }
     var duracionMin by remember { mutableStateOf(0) }
 
-
     var errorMessage by remember { mutableStateOf("") }
     var isSubmitting by remember { mutableStateOf(false) }
     var showDetailsSheet by remember { mutableStateOf(false) }
+    var showMotorizadoTarifasPopup by remember { mutableStateOf(false) }
+    var tarifaMotorizado by remember { mutableStateOf("plana") }
+    var destinatarioPaga by remember { mutableStateOf(false) }
 
     val pesoDouble = pesoKg.replace(",", ".").toDoubleOrNull()
 
-    LaunchedEffect(packageSize, pesoDouble) {
-        val bloqueaMotorizado =
-            packageSize != "Pequeño - hasta 5 kg" || (pesoDouble != null && pesoDouble > 5.0)
+    LaunchedEffect(pesoDouble, selectedVehicle) {
 
-        val bloqueaAuto =
-            packageSize == "Grande - 20 a 100 kg" ||
-                    packageSize == "Carga pesada - más de 100 kg" ||
-                    (pesoDouble != null && pesoDouble > 20.0)
+        if (selectedVehicle == "Motorizado" && pesoDouble != null) {
 
-        val bloqueaVan =
-            packageSize == "Carga pesada - más de 100 kg" ||
-                    (pesoDouble != null && pesoDouble > 100.0)
+            tarifaMotorizado =
+                if (pesoDouble > 2.5) {
+                    "estandar"
+                } else {
+                    "plana"
+                }
 
-        if (selectedVehicle == "Motorizado" && bloqueaMotorizado) {
-            selectedVehicle = "Auto / Sedan"
+            errorMessage =
+                if (pesoDouble > 2.5) {
+                    "Se cambió automáticamente a Tarifa Estándar porque supera los 2.5 kg"
+                } else {
+                    ""
+                }
         }
 
-        if (selectedVehicle == "Auto / Sedan" && bloqueaAuto) {
-            selectedVehicle = "Van / Minivan"
-        }
-
-        if (selectedVehicle == "Van / Minivan" && bloqueaVan) {
-            selectedVehicle = "Camión"
+        if (
+            selectedVehicle == "Van / Minivan" &&
+            pesoDouble != null &&
+            pesoDouble > 100
+        ) {
+            errorMessage = "Van / Minivan solo permite paquetes hasta 100 kg"
         }
     }
 
@@ -176,6 +179,7 @@ fun PedidoNacionalScreen(navController: NavController) {
         dropoffLatSaved?.let { dropoffLat = it }
         dropoffLngSaved?.let { dropoffLng = it }
     }
+
     LaunchedEffect(pickupLat, pickupLng, dropoffLat, dropoffLng) {
         val target = when {
             pickupLat != 0.0 && pickupLng != 0.0 &&
@@ -246,7 +250,9 @@ fun PedidoNacionalScreen(navController: NavController) {
 
     val totalSeleccionado = calcularPrecioVehiculo(
         vehiculo = selectedVehicle,
-        distanciaKm = distanciaKm
+        distanciaKm = distanciaKm,
+        tarifaMotorizado = tarifaMotorizado,
+        pesoKg = pesoDouble
     )
 
     Column(
@@ -290,45 +296,30 @@ fun PedidoNacionalScreen(navController: NavController) {
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
             )
 
-            val permiteMotorizado =
-                packageSize == "Pequeño - hasta 5 kg" &&
-                        (pesoDouble == null || pesoDouble <= 5.0)
-
-            val bloqueaMotorizado =
-                packageSize != "Pequeño - hasta 5 kg" || (pesoDouble != null && pesoDouble > 5.0)
-
-            val bloqueaAuto =
-                packageSize == "Grande - 20 a 100 kg" ||
-                        packageSize == "Carga pesada - más de 100 kg" ||
-                        (pesoDouble != null && pesoDouble > 20.0)
-
-            val bloqueaVan =
-                packageSize == "Carga pesada - más de 100 kg" ||
-                        (pesoDouble != null && pesoDouble > 100.0)
+            val bloqueaVan = pesoDouble != null && pesoDouble > 100.0
 
             VehicleCard(
                 icon = R.drawable.motorizado,
-                name = "Motorizado",
-                desc = "Paquetes pequeños hasta 5 kg. Rápido en tráfico.",
-                price = calcularPrecioVehiculo("Motorizado", distanciaKm),
-                selected = selectedVehicle == "Motorizado" && !bloqueaMotorizado,
+                name = if (tarifaMotorizado == "plana") {
+                    "Motorizado Tarifa Plana"
+                } else {
+                    "Motorizado Tarifa Estándar"
+                },
+                desc = "Paquetes pequeños hasta 2.5 kg o un poco más. Rápido en tráfico.",
+                price = calcularPrecioVehiculo(
+                    vehiculo = "Motorizado",
+                    distanciaKm = distanciaKm,
+                    tarifaMotorizado = tarifaMotorizado,
+                    pesoKg = pesoDouble
+                ),
+                selected = selectedVehicle == "Motorizado",
                 recommended = true,
-                enabled = !bloqueaMotorizado,
-                disabledReason = "No disponible: supera los 5 kg permitidos.",
+                enabled = true,
+                disabledReason = null,
+                showInfoButton = true,
+                onInfoClick = { showMotorizadoTarifasPopup = true },
                 onClick = { selectedVehicle = "Motorizado" }
             )
-
-            VehicleCard(
-                icon = R.drawable.carro,
-                name = "Auto / Sedan",
-                desc = "Hasta 20 kg. Ideal para paquetes medianos y frágiles.",
-                price = calcularPrecioVehiculo("Auto / Sedan", distanciaKm),
-                selected = selectedVehicle == "Auto / Sedan" && !bloqueaAuto,
-                enabled = !bloqueaAuto,
-                disabledReason = "No disponible: supera los 20 kg permitidos.",
-                onClick = { selectedVehicle = "Auto / Sedan" }
-            )
-
             VehicleCard(
                 icon = R.drawable.trailer,
                 name = "Van / Minivan",
@@ -385,21 +376,18 @@ fun PedidoNacionalScreen(navController: NavController) {
                             showDetailsSheet = true
                         }
 
-                        selectedVehicle == "Motorizado" && pesoValidado > 5.0 -> {
-                            errorMessage = "Motorizado solo permite paquetes hasta 5 kg"
-                            selectedVehicle = "Auto / Sedan"
-                            showDetailsSheet = true
+                        selectedVehicle == "Motorizado" && tarifaMotorizado == "plana" && pesoValidado > 2.5 -> {
+                            tarifaMotorizado = "estandar"
+                            errorMessage = "Se cambió automáticamente a Tarifa Estándar porque supera los 2.5 kg"
                         }
 
-                        selectedVehicle == "Auto / Sedan" && pesoValidado > 20.0 -> {
-                            errorMessage = "Auto / Sedan solo permite paquetes hasta 20 kg"
-                            selectedVehicle = "Van / Minivan"
+                        selectedVehicle == "Motorizado" && pesoValidado > 5.0 -> {
+                            errorMessage = "El motorizado solo admite hasta 5 kg. Selecciona Van / Minivan."
                             showDetailsSheet = true
                         }
 
                         selectedVehicle == "Van / Minivan" && pesoValidado > 100.0 -> {
                             errorMessage = "Van / Minivan solo permite paquetes hasta 100 kg"
-                            selectedVehicle = "Camión"
                             showDetailsSheet = true
                         }
 
@@ -412,6 +400,7 @@ fun PedidoNacionalScreen(navController: NavController) {
                             errorMessage = "Agrega una foto del paquete"
                             showDetailsSheet = true
                         }
+
                         bultosValidados == null || bultosValidados <= 0 -> {
                             errorMessage = "Ingresa la cantidad de cajas o bultos"
                             showDetailsSheet = true
@@ -459,10 +448,15 @@ fun PedidoNacionalScreen(navController: NavController) {
                                     tipoVehiculo = textPart(
                                         when (selectedVehicle) {
                                             "Motorizado" -> "motorizado"
-                                            "Auto / Sedan" -> "auto"
                                             "Van / Minivan" -> "van"
                                             else -> "motorizado"
                                         }
+                                    ),
+                                    tarifaMotorizado = textPart(
+                                        if (selectedVehicle == "Motorizado") tarifaMotorizado else ""
+                                    ),
+                                    destinatarioPaga = textPart(
+                                        if (destinatarioPaga) "1" else "0"
                                     ),
                                     metodoPago = textPart(metodoPago),
                                     distanciaKm = textPart("%.2f".format(distanciaKm)),
@@ -543,6 +537,7 @@ fun PedidoNacionalScreen(navController: NavController) {
                     label = "Peso aproximado del paquete (kg)",
                     keyboardType = KeyboardType.Decimal
                 )
+
                 Spacer(modifier = Modifier.height(12.dp))
 
                 LightField(
@@ -621,12 +616,20 @@ fun PedidoNacionalScreen(navController: NavController) {
 
                 Spacer(modifier = Modifier.height(18.dp))
 
+                DestinatarioPagaSwitch(
+                    checked = destinatarioPaga,
+                    onCheckedChange = { destinatarioPaga = it }
+                )
+
+                Spacer(modifier = Modifier.height(18.dp))
+
                 Text(
                     text = "Método de pago",
                     color = Dark,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Black
                 )
+
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -673,6 +676,14 @@ fun PedidoNacionalScreen(navController: NavController) {
                 }
             }
         }
+    }
+
+    if (showMotorizadoTarifasPopup) {
+        MotorizadoTarifasPopup(
+            selectedTarifa = tarifaMotorizado,
+            onSelectTarifa = { tarifaMotorizado = it },
+            onDismiss = { showMotorizadoTarifasPopup = false }
+        )
     }
 }
 
@@ -731,7 +742,6 @@ private fun MiniMapPedido(
     animationDurationMs: Int = 2600
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-
     val progress = remember { Animatable(0f) }
 
     LaunchedEffect(ruta) {
@@ -757,7 +767,6 @@ private fun MiniMapPedido(
             val posicion = (progress.value * (total - 1)).coerceIn(0f, (total - 1).toFloat())
             val index = posicion.toInt().coerceIn(0, total - 1)
             val fraccion = posicion - index
-
             val base = ruta.take(index + 1).toMutableList()
 
             if (index < total - 1) {
@@ -927,6 +936,8 @@ private fun VehicleCard(
     recommended: Boolean = false,
     enabled: Boolean = true,
     disabledReason: String? = null,
+    showInfoButton: Boolean = false,
+    onInfoClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     val alpha = if (enabled) 1f else 0.38f
@@ -947,7 +958,7 @@ private fun VehicleCard(
                 width = if (selected && enabled) 2.dp else 1.dp,
                 color = when {
                     !enabled -> Color(0xFFE0E0E0)
-                    selected -> Color(0xFF1A4FBF)
+                    selected -> Blue
                     else -> Color(0xFFF0F0F0)
                 },
                 shape = RoundedCornerShape(16.dp)
@@ -969,32 +980,61 @@ private fun VehicleCard(
         }
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = name,
-                color = Color(0xFF1A1A1A).copy(alpha = alpha),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Black
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = name,
+                    color = Dark.copy(alpha = alpha),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+
+                if (showInfoButton && enabled && onInfoClick != null) {
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(Blue)
+                            .clickable { onInfoClick() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocalOffer,
+                            contentDescription = "Ver tarifas",
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(2.dp))
 
             Text(
                 text = if (!enabled && !disabledReason.isNullOrBlank()) disabledReason else desc,
-                color = if (enabled) Color(0xFF888888) else Red,
+                color = if (enabled) Muted else Red,
                 fontSize = 11.sp,
                 lineHeight = 14.sp,
                 fontWeight = if (enabled) FontWeight.Normal else FontWeight.Bold
             )
-            if (enabled) {
 
+            if (enabled && name.contains("Motorizado")) {
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = when (name) {
-                        "Motorizado" -> "S/10 tarifa plana hasta 15 km"
-                        else -> ""
+                    text = if (name.contains("Plana")) {
+                        "S/10 fijo hasta 2.5 kg"
+                    } else {
+                        "S/10 + km extra según distancia"
                     },
-                    color = Color(0xFF22C55E),
+                    color = Green,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -1006,7 +1046,7 @@ private fun VehicleCard(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xFFE02020))
+                        .background(Red)
                         .padding(horizontal = 7.dp, vertical = 2.dp)
                 ) {
                     Text(
@@ -1030,7 +1070,7 @@ private fun VehicleCard(
             } else {
                 Text(
                     text = "S/ ${"%.0f".format(price)}",
-                    color = Color(0xFF1A1A1A),
+                    color = Dark,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Black
                 )
@@ -1040,6 +1080,244 @@ private fun VehicleCard(
                     color = Color(0xFF999999),
                     fontSize = 10.sp
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MotorizadoTarifasPopup(
+    selectedTarifa: String,
+    onSelectTarifa: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(22.dp),
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Dark),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text(
+                    text = "Entendido",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 15.sp
+                )
+            }
+        },
+        title = {
+            Text(
+                text = "Tarifas del Motorizado 🏍️",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Black,
+                color = Dark
+            )
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "Elige la tarifa que más te conviene",
+                    color = Muted,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                MotorizadoTarifaCard(
+                    title = "Motorizado Tarifa Plana",
+                    tag = "PRECIO FIJO",
+                    price = "S/ 10",
+                    subtitle = "precio único",
+                    background = Color(0xFFF0FFF4),
+                    border = Green,
+                    tagColor = Green,
+                    selected = selectedTarifa == "plana",
+                    onClick = {
+                        onSelectTarifa("plana")
+                        onDismiss()
+                    },
+                    items = listOf(
+                        "Ideal para paquetes pequeños y livianos",
+                        "Hasta 2.5 kg: precio fijo de S/10",
+                        "Precio no aumenta por distancia mientras no supere 2.5 kg"
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                MotorizadoTarifaCard(
+                    title = "Motorizado Tarifa Estándar",
+                    tag = "MÁS CAPACIDAD",
+                    price = "S/ 10",
+                    subtitle = "+ S/1 por km",
+                    background = Color(0xFFF0F4FF),
+                    border = Blue,
+                    tagColor = Blue,
+                    selected = selectedTarifa == "estandar",
+                    onClick = {
+                        onSelectTarifa("estandar")
+                        onDismiss()
+                    },
+                    items = listOf(
+                        "Para paquetes mayores a 2.5 kg hasta 5 kg",
+                        "Precio base S/10",
+                        "+ S/1 por km extra después de los 15 km",
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Surface(
+                    color = Color(0xFFFFF8F0),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = Color(0xFFF97316),
+                            modifier = Modifier.size(18.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Text(
+                            text = "La tarifa se calcula automáticamente al seleccionar origen y destino.",
+                            color = Color(0xFF92400E),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun MotorizadoTarifaCard(
+    title: String,
+    tag: String,
+    price: String,
+    subtitle: String,
+    background: Color,
+    border: Color,
+    tagColor: Color,
+    selected: Boolean,
+    onClick: () -> Unit,
+    items: List<String>
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        color = if (selected) background else Color.White,
+        shape = RoundedCornerShape(18.dp),
+        shadowElevation = if (selected) 8.dp else 2.dp,
+        border = BorderStroke(
+            width = if (selected) 3.dp else 2.dp,
+            color = border
+        )
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(if (selected) border else Color.White)
+                        .border(2.dp, border, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (selected) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        color = Dark,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Black
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(tagColor)
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = tag,
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = price,
+                        color = Dark,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Black
+                    )
+
+                    Text(
+                        text = subtitle,
+                        color = Muted,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            items.forEach { item ->
+                Row(
+                    modifier = Modifier.padding(vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = border,
+                        modifier = Modifier.size(15.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(7.dp))
+
+                    Text(
+                        text = item,
+                        color = Color(0xFF444444),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = 15.sp
+                    )
+                }
             }
         }
     }
@@ -1184,16 +1462,33 @@ private fun LightField(
 
 private fun calcularPrecioVehiculo(
     vehiculo: String,
-    distanciaKm: Double
+    distanciaKm: Double,
+    tarifaMotorizado: String = "plana",
+    pesoKg: Double? = null
 ): Double {
     return when (vehiculo) {
-        "Motorizado" -> if (distanciaKm <= 15.0) 10.0 else 10.0 + ((distanciaKm - 15.0) * 1.0)
-        "Auto / Sedan" -> if (distanciaKm <= 15.0)
-            20.0
-        else
-            20.0 + ((distanciaKm - 15.0) * 2.0)
-        "Van / Minivan" -> if (distanciaKm <= 15.0) 35.0 else 35.0 + ((distanciaKm - 15.0) * 3.0)
-        "Camión" -> if (distanciaKm <= 15.0) 80.0 else 80.0 + ((distanciaKm - 15.0) * 5.0)
+        "Motorizado" -> {
+            val kmExtra = if (distanciaKm > 15.0) distanciaKm - 15.0 else 0.0
+
+            if (tarifaMotorizado == "plana") {
+                if ((pesoKg ?: 0.0) <= 2.5) {
+                    10.0
+                } else {
+                    10.0 + kmExtra
+                }
+            } else {
+                10.0 + kmExtra
+            }
+        }
+
+        "Van / Minivan" -> {
+            if (distanciaKm <= 15.0) {
+                35.0
+            } else {
+                35.0 + ((distanciaKm - 15.0) * 3.0)
+            }
+        }
+
         else -> 10.0
     }
 }
@@ -1324,6 +1619,8 @@ private fun uriToFile(
         inputStream.copyTo(output)
     }
 
+    inputStream.close()
+
     return file
 }
 
@@ -1381,5 +1678,63 @@ private fun RowScope.PaymentButton(
             contentDescription = metodo,
             modifier = Modifier.size(32.dp)
         )
+    }
+}
+
+@Composable
+private fun DestinatarioPagaSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) },
+        shape = RoundedCornerShape(16.dp),
+        color = if (checked) Color(0xFFEAF2FF) else LightBg,
+        border = BorderStroke(
+            width = 2.dp,
+            color = if (checked) Blue else Border
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "¿El destinatario paga?",
+                    color = Dark,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Black
+                )
+
+                Spacer(modifier = Modifier.height(3.dp))
+
+                Text(
+                    text = if (checked) {
+                        "Sí, el destinatario pagará al recibir el pedido."
+                    } else {
+                        "No, pagará la persona que realiza el pedido."
+                    },
+                    color = Muted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 16.sp
+                )
+            }
+
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = Blue,
+                    uncheckedThumbColor = Color.White,
+                    uncheckedTrackColor = Color(0xFFBDBDBD),
+                    uncheckedBorderColor = Color.Transparent
+                )
+            )
+        }
     }
 }

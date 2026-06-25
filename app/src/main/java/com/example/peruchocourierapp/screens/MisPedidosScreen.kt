@@ -79,7 +79,6 @@ import retrofit2.Response
 import kotlinx.coroutines.launch
 import java.text.Normalizer
 import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
 private val PcBlue = Color(0xFF1A4FBF)
 private val PcBlueDark = Color(0xFF0B2E78)
 private val PcBlueMid = Color(0xFF2D6BE4)
@@ -559,6 +558,13 @@ private fun PedidoPremiumCard(
                         icon = Icons.Outlined.Inventory2,
                         text = "${order.categoria ?: "-"} · ${order.tamano_paquete ?: "-"}"
                     )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    InfoLine(
+                        icon = Icons.Outlined.TwoWheeler,
+                        text = vehiculoLegible(order)
+                    )
                 } else {
                     InfoLine(
                         icon = Icons.Outlined.Language,
@@ -919,7 +925,7 @@ private fun PedidoDetalleSheet(
                     items = listOf(
                         "Categoría" to (order.categoria ?: "-"),
                         "Tamaño" to (order.tamano_paquete ?: "-"),
-                        "Vehículo" to (order.tipo_vehiculo ?: "-"),
+                        "Vehículo" to vehiculoLegible(order),
                         "Distancia" to "${order.distancia_km ?: "-"} km"
                     )
                 )
@@ -1111,7 +1117,7 @@ private fun DetailHeroCard(
                         MiniStat(
                             icon = Icons.Outlined.TwoWheeler,
                             label = "Vehículo",
-                            value = order.tipo_vehiculo ?: "-",
+                            value = vehiculoLegible(order),
                             modifier = Modifier.weight(1f)
                         )
 
@@ -1191,12 +1197,31 @@ private fun TrackingTimeline(
     val steps = if (isNacional) {
         listOf(
             "Pedido creado" to true,
-            "Pago confirmado" to (estado != "pendiente_pago"),
-            "Recojo asignado" to (estado in listOf("asignado", "recogiendo", "recogido", "en_camino", "entregado")),
+            "Esperando repartidor" to (estado in listOf(
+                "esperando_repartidor",
+                "asignado",
+                "recogiendo",
+                "recogido",
+                "en_camino",
+                "entregado"
+            )),
+            "Repartidor asignado" to (estado in listOf(
+                "asignado",
+                "recogiendo",
+                "recogido",
+                "en_camino",
+                "entregado"
+            )),
+            "Recogiendo paquete" to (estado in listOf(
+                "recogiendo",
+                "recogido",
+                "en_camino",
+                "entregado"
+            )),
             "En camino" to (estado in listOf("en_camino", "entregado")),
             "Entregado" to (estado == "entregado")
         )
-    } else {
+    }  else {
         listOf(
             "Pedido internacional registrado" to true,
             "En revisión" to (estado in listOf(
@@ -1518,6 +1543,20 @@ private fun DetailDivider() {
         color = CardBorder,
         modifier = Modifier.padding(vertical = 10.dp)
     )
+}
+
+
+private fun vehiculoLegible(order: Order): String {
+    val vehiculo = order.tipo_vehiculo.orEmpty().lowercase().trim()
+    val tarifa = order.tarifa_motorizado.orEmpty().lowercase().trim()
+
+    return when {
+        vehiculo == "motorizado" && tarifa == "plana" -> "Motorizado Tarifa Plana"
+        vehiculo == "motorizado" && tarifa == "estandar" -> "Motorizado Tarifa Estándar"
+        vehiculo == "motorizado" -> "Motorizado"
+        vehiculo == "van" || vehiculo == "van / minivan" || vehiculo == "minivan" -> "Van / Minivan"
+        else -> order.tipo_vehiculo ?: "-"
+    }
 }
 
 private fun callPhone(

@@ -38,13 +38,15 @@ import com.example.peruchocourierapp.models.ActiveOrderResponse
 import com.example.peruchocourierapp.models.BasicResponse
 import com.example.peruchocourierapp.models.ChatMessage
 import com.example.peruchocourierapp.models.GetChatMessagesResponse
+import com.example.peruchocourierapp.models.CallContactsResponse
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import kotlinx.coroutines.delay
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-
+import android.content.Intent
+import androidx.compose.material.icons.filled.Phone
 private val CNegro = Color(0xFF111111)
 private val CAzul = Color(0xFF1A4FBF)
 private val CAzulOscuro = Color(0xFF0D3280)
@@ -88,6 +90,8 @@ fun ChatPedidoScreen(
         Uri.decode(receiverEmail).trim()
     }
 
+    val myRole = sessionManager.getUserRole()?.trim()?.lowercase().orEmpty()
+
     var mensajes by remember { mutableStateOf<List<ChatMensajeUi>>(emptyList()) }
     var inputText by remember { mutableStateOf("") }
     var isSending by remember { mutableStateOf(false) }
@@ -95,6 +99,10 @@ fun ChatPedidoScreen(
     var errorMsg by remember { mutableStateOf("") }
     var chatBloqueado by remember { mutableStateOf(false) }
     var estadoPedido by remember { mutableStateOf("asignado") }
+    var driverPhone by remember { mutableStateOf("") }
+    var telefonoRemitente by remember { mutableStateOf("") }
+    var telefonoDestinatario by remember { mutableStateOf("") }
+    var showCallMenu by remember { mutableStateOf(false) }
 
     fun mapearMensaje(msg: ChatMessage): ChatMensajeUi {
         val isMine = msg.sender_email.trim().equals(myEmail, ignoreCase = true)
@@ -259,14 +267,57 @@ fun ChatPedidoScreen(
         })
     }
 
+
+    fun llamar(numero: String) {
+        val numeroLimpio = numero.trim()
+
+        if (numeroLimpio.isBlank()) {
+            errorMsg = "Número no disponible"
+            return
+        }
+
+        val intent = Intent(Intent.ACTION_DIAL).apply {
+            data = Uri.parse("tel:$numeroLimpio")
+        }
+
+        context.startActivity(intent)
+    }
+
+    fun cargarContactosLlamada() {
+        if (orderId <= 0) return
+
+        RetrofitClient.instance.getOrderCallContacts(orderId)
+            .enqueue(object : Callback<CallContactsResponse> {
+                override fun onResponse(
+                    call: Call<CallContactsResponse>,
+                    response: Response<CallContactsResponse>
+                ) {
+                    val result = response.body()
+
+                    if (response.isSuccessful && result?.success == true) {
+                        driverPhone = result.driver_phone.orEmpty()
+                        telefonoRemitente = result.telefono_remitente.orEmpty()
+                        telefonoDestinatario = result.telefono_destinatario.orEmpty()
+                    }
+                }
+
+                override fun onFailure(
+                    call: Call<CallContactsResponse>,
+                    t: Throwable
+                ) {}
+            })
+    }
+
     LaunchedEffect(orderId) {
         cargarMensajes()
         cargarEstadoPedido()
+        cargarContactosLlamada()
 
         while (true) {
             delay(3000)
             cargarMensajes()
             cargarEstadoPedido()
+            cargarContactosLlamada()
         }
     }
 
@@ -288,7 +339,9 @@ fun ChatPedidoScreen(
             orderInfo = "Pedido #$orderId",
             receiverEmail = receiverEmailDecoded,
             myName = myName,
-            onBack = { navController.popBackStack() }
+            showCallButton = true,
+            onBack = { navController.popBackStack() },
+            onCallClick = { showCallMenu = true }
         )
 
         ChatBanner(orderInfo = "Pedido #$orderId")
@@ -416,6 +469,20 @@ fun ChatPedidoScreen(
             )
         }
     }
+
+    if (showCallMenu) {
+        CallContactsDialog(
+            isDriver = myRole == "repartidor",
+            driverPhone = driverPhone,
+            telefonoRemitente = telefonoRemitente,
+            telefonoDestinatario = telefonoDestinatario,
+            onDismiss = { showCallMenu = false },
+            onCall = { numero ->
+                showCallMenu = false
+                llamar(numero)
+            }
+        )
+    }
 }
 
 @Composable
@@ -423,7 +490,9 @@ private fun ChatTopBar(
     orderInfo: String,
     receiverEmail: String,
     myName: String,
-    onBack: () -> Unit
+    showCallButton: Boolean,
+    onBack: () -> Unit,
+    onCallClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -482,6 +551,25 @@ private fun ChatTopBar(
             }
         }
 
+        if (showCallButton) {
+            IconButton(
+                onClick = onCallClick,
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE8FFF1))
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Phone,
+                    contentDescription = "Llamar",
+                    tint = CVerde,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+
         Box(
             modifier = Modifier
                 .width(50.dp)
@@ -533,6 +621,162 @@ private fun ChatTopBar(
         color = CGrisBorde,
         thickness = 1.dp
     )
+}
+
+
+@Composable
+private fun CallContactsDialog(
+    isDriver: Boolean,
+    driverPhone: String,
+    telefonoRemitente: String,
+    telefonoDestinatario: String,
+    onDismiss: () -> Unit,
+    onCall: (String) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(22.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Phone,
+                    contentDescription = null,
+                    tint = CVerde,
+                    modifier = Modifier.size(22.dp)
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Text(
+                    text = "Llamar",
+                    color = CNegro,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (isDriver) {
+                    if (telefonoRemitente.isNotBlank()) {
+                        CallContactOption(
+                            title = "Remitente",
+                            phone = telefonoRemitente,
+                            onClick = { onCall(telefonoRemitente) }
+                        )
+                    }
+
+                    if (telefonoDestinatario.isNotBlank()) {
+                        CallContactOption(
+                            title = "Destinatario",
+                            phone = telefonoDestinatario,
+                            onClick = { onCall(telefonoDestinatario) }
+                        )
+                    }
+
+                    if (telefonoRemitente.isBlank() && telefonoDestinatario.isBlank()) {
+                        Text(
+                            text = "No hay números disponibles para este pedido.",
+                            color = CMuted,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                } else {
+                    if (driverPhone.isNotBlank()) {
+                        CallContactOption(
+                            title = "Repartidor",
+                            phone = driverPhone,
+                            onClick = { onCall(driverPhone) }
+                        )
+                    } else {
+                        Text(
+                            text = "Aún no hay número disponible del repartidor.",
+                            color = CMuted,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Cerrar",
+                    color = CAzul,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    )
+}
+
+@Composable
+private fun CallContactOption(
+    title: String,
+    phone: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFFF6FFF9),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = Color(0xFFD5F5DF)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(CVerde),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Phone,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(19.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = CNegro,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Black
+                )
+
+                Text(
+                    text = phone,
+                    color = CMuted,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Icon(
+                imageVector = Icons.Default.Phone,
+                contentDescription = null,
+                tint = CVerde,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
 }
 
 @Composable

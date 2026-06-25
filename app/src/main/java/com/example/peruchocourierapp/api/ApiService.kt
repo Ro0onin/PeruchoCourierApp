@@ -2,6 +2,7 @@ package com.example.peruchocourierapp.api
 
 import com.example.peruchocourierapp.models.ActiveOrderResponse
 import com.example.peruchocourierapp.models.BasicResponse
+import com.example.peruchocourierapp.models.CallContactsResponse
 import com.example.peruchocourierapp.models.CreateOrderResponse
 import com.example.peruchocourierapp.models.DriverDashboardResponse
 import com.example.peruchocourierapp.models.DriverLocationResponse
@@ -86,10 +87,13 @@ interface ApiService {
         @Part("tamano_paquete") tamanoPaquete: RequestBody,
         @Part("peso_kg") pesoKg: RequestBody,
         @Part("tipo_vehiculo") tipoVehiculo: RequestBody,
+        @Part("tarifa_motorizado") tarifaMotorizado: RequestBody,
+        @Part("destinatario_paga") destinatarioPaga: RequestBody,
         @Part("metodo_pago") metodoPago: RequestBody,
         @Part("distancia_km") distanciaKm: RequestBody,
         @Part("total") total: RequestBody,
         @Part("cantidad_bultos") cantidadBultos: RequestBody,
+
 
         @Part fotoPaquete: MultipartBody.Part
     ): Call<BasicResponse>
@@ -295,7 +299,10 @@ interface ApiService {
         @Field("motivo") motivo: String
     ): BasicResponse
 
-
+    @GET("get_order_call_contacts.php")
+    fun getOrderCallContacts(
+        @Query("order_id") orderId: Int
+    ): Call<CallContactsResponse>
 
 
 }

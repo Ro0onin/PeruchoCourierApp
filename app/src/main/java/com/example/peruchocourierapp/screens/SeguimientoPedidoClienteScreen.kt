@@ -757,7 +757,7 @@ private fun EstadoBadge(estado: String) {
         "recogido" -> Color(0xFFFFF4E8)
         "en_camino" -> Color(0xFFDCFCE7)
         "entregado" -> Color(0xFFD1FAE5)
-        "pendiente_pago" -> Color(0xFFFFF4E8)
+        "pendiente_pago", "esperando_repartidor" -> Color(0xFFFFF4E8)
         "buscando" -> Color(0xFFF5F5F5)
         else -> Color(0xFFF5F5F5)
     }
@@ -776,7 +776,7 @@ private fun EstadoBadge(estado: String) {
         "recogido" -> "📦 "
         "en_camino" -> "🚀 "
         "entregado" -> "✅ "
-        "pendiente_pago" -> "💳 "
+        "pendiente_pago", "esperando_repartidor" -> "⏳ "
         "buscando" -> "🔍 "
         else -> "📋 "
     }
@@ -810,7 +810,7 @@ private fun textoEstado(status: String): String =
         "recogido" -> "Pedido recogido"
         "en_camino" -> "En camino a entrega"
         "entregado" -> "¡Entregado!"
-        "pendiente_pago" -> "Pendiente de pago"
+        "pendiente_pago", "esperando_repartidor" -> "Esperando repartidor"
         else -> status.ifBlank { "Sin estado" }
             .replace("_", " ")
             .replaceFirstChar { it.uppercase() }

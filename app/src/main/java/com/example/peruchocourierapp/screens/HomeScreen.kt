@@ -1,6 +1,7 @@
 package com.example.peruchocourierapp.screens
 
 import android.app.Activity
+import android.net.Uri
 import android.util.Log
 import android.util.Patterns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -49,13 +50,12 @@ import com.example.peruchocourierapp.models.BasicResponse
 import com.example.peruchocourierapp.models.LoginResponse
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.messaging.FirebaseMessaging
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import com.google.firebase.auth.FirebaseAuth
-
 
 private val BlueDark = Color(0xFF0D3280)
 private val BluePrimary = Color(0xFF1A4FBF)
@@ -83,24 +83,22 @@ fun LoginScreen(navController: NavController) {
     fun guardarTokenFcm(userEmail: String) {
         FirebaseMessaging.getInstance().token
             .addOnSuccessListener { token ->
-                RetrofitClient.instance.saveFcmToken(
-                    userEmail,
-                    token
-                ).enqueue(object : Callback<BasicResponse> {
-                    override fun onResponse(
-                        call: Call<BasicResponse>,
-                        response: Response<BasicResponse>
-                    ) {
-                        Log.d("FCM", "Token guardado: ${response.body()?.message}")
-                    }
+                RetrofitClient.instance.saveFcmToken(userEmail, token)
+                    .enqueue(object : Callback<BasicResponse> {
+                        override fun onResponse(
+                            call: Call<BasicResponse>,
+                            response: Response<BasicResponse>
+                        ) {
+                            Log.d("FCM", "Token guardado: ${response.body()?.message}")
+                        }
 
-                    override fun onFailure(
-                        call: Call<BasicResponse>,
-                        t: Throwable
-                    ) {
-                        Log.e("FCM", "Error guardando token", t)
-                    }
-                })
+                        override fun onFailure(
+                            call: Call<BasicResponse>,
+                            t: Throwable
+                        ) {
+                            Log.e("FCM", "Error guardando token", t)
+                        }
+                    })
             }
     }
 
@@ -130,7 +128,6 @@ fun LoginScreen(navController: NavController) {
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
 
         task.addOnSuccessListener { account ->
-
             val idToken = account.idToken
 
             if (idToken.isNullOrEmpty()) {
@@ -143,12 +140,11 @@ fun LoginScreen(navController: NavController) {
 
             firebaseAuth.signInWithCredential(credential)
                 .addOnSuccessListener {
-                    isGoogleLoading = false
-
                     val user = firebaseAuth.currentUser
                     val userEmail = user?.email ?: ""
 
                     if (userEmail.isBlank()) {
+                        isGoogleLoading = false
                         errorMessage = "No se pudo obtener el correo de Google"
                         return@addOnSuccessListener
                     }
@@ -158,13 +154,11 @@ fun LoginScreen(navController: NavController) {
                         name = user?.displayName ?: "",
                         googleUid = user?.uid ?: ""
                     ).enqueue(object : Callback<LoginResponse> {
-
                         override fun onResponse(
                             call: Call<LoginResponse>,
                             response: Response<LoginResponse>
                         ) {
                             isGoogleLoading = false
-
                             val result = response.body()
 
                             if (response.isSuccessful && result?.success == true) {
@@ -173,25 +167,47 @@ fun LoginScreen(navController: NavController) {
                                 val roleDb = result.role ?: "cliente"
                                 val nameDb = result.name ?: user?.displayName ?: ""
 
-                                sessionManager.saveUserSession(
-                                    name = nameDb,
-                                    email = userEmail,
-                                    phone = phoneDb,
-                                    role = roleDb,
-                                    dni = dniDb
-                                )
-
-                                guardarTokenFcm(userEmail)
-
-                                if (phoneDb.isBlank() || dniDb.isBlank()) {
-                                    navController.navigate("completar_perfil_google/$userEmail") {
-                                        popUpTo("login") { inclusive = true }
-                                        launchSingleTop = true
+                                when {
+                                    phoneDb.isBlank() || dniDb.isBlank() -> {
+                                        navController.navigate(
+                                            "completar_perfil_google/${Uri.encode(userEmail)}"
+                                        ) {
+                                            popUpTo("login") { inclusive = true }
+                                            launchSingleTop = true
+                                        }
                                     }
-                                } else {
-                                    navController.navigate("client_lobby") {
-                                        popUpTo("login") { inclusive = true }
-                                        launchSingleTop = true
+
+                                    result.phone_verified != 1 -> {
+                                        navController.navigate(
+                                            "verify_sms/${Uri.encode(phoneDb)}/${Uri.encode(nameDb)}/${Uri.encode(userEmail)}/${Uri.encode(dniDb)}"
+                                        ) {
+                                            popUpTo("login") { inclusive = true }
+                                            launchSingleTop = true
+                                        }
+                                    }
+
+                                    else -> {
+                                        sessionManager.saveUserSession(
+                                            name = nameDb,
+                                            email = userEmail,
+                                            phone = phoneDb,
+                                            role = roleDb,
+                                            dni = dniDb
+                                        )
+
+                                        guardarTokenFcm(userEmail)
+
+                                        if (roleDb == "repartidor") {
+                                            navController.navigate("driver_lobby") {
+                                                popUpTo("login") { inclusive = true }
+                                                launchSingleTop = true
+                                            }
+                                        } else {
+                                            navController.navigate("client_lobby") {
+                                                popUpTo("login") { inclusive = true }
+                                                launchSingleTop = true
+                                            }
+                                        }
                                     }
                                 }
                             } else {
@@ -199,7 +215,10 @@ fun LoginScreen(navController: NavController) {
                             }
                         }
 
-                        override fun onFailure(call: Call<LoginResponse>, t: Throwable) {
+                        override fun onFailure(
+                            call: Call<LoginResponse>,
+                            t: Throwable
+                        ) {
                             isGoogleLoading = false
                             errorMessage = "Error conectando con servidor: ${t.message}"
                         }
@@ -373,42 +392,42 @@ fun LoginScreen(navController: NavController) {
                                     response: Response<LoginResponse>
                                 ) {
                                     isLoading = false
+                                    val result = response.body()
 
-                                    if (response.isSuccessful) {
-                                        val result = response.body()
+                                    if (response.isSuccessful && result?.success == true) {
+                                        val userEmail = result.email ?: cleanEmail
+                                        val roleDb = result.role ?: "cliente"
 
-                                        if (result?.success == true) {
-                                            val userEmail = result.email ?: cleanEmail
+                                        sessionManager.saveUserSession(
+                                            name = result.name ?: "",
+                                            email = userEmail,
+                                            phone = result.phone ?: "",
+                                            role = roleDb,
+                                            dni = result.dni ?: ""
+                                        )
 
-                                            sessionManager.saveUserSession(
-                                                name = result.name ?: "",
-                                                email = userEmail,
-                                                phone = result.phone ?: "",
-                                                role = result.role ?: "cliente",
-                                                dni = result.dni ?: ""
-                                            )
+                                        guardarTokenFcm(userEmail)
 
-                                            guardarTokenFcm(userEmail)
-
-                                            val role = result.role ?: "cliente"
-
-                                            if (role == "repartidor") {
-                                                navController.navigate("driver_lobby") {
-                                                    popUpTo("login") { inclusive = true }
-                                                    launchSingleTop = true
-                                                }
-                                            } else {
-                                                navController.navigate("client_lobby") {
-                                                    popUpTo("login") { inclusive = true }
-                                                    launchSingleTop = true
-                                                }
+                                        if (roleDb == "repartidor") {
+                                            navController.navigate("driver_lobby") {
+                                                popUpTo("login") { inclusive = true }
+                                                launchSingleTop = true
                                             }
                                         } else {
-                                            errorMessage =
-                                                result?.message ?: "Credenciales incorrectas"
+                                            navController.navigate("client_lobby") {
+                                                popUpTo("login") { inclusive = true }
+                                                launchSingleTop = true
+                                            }
+                                        }
+                                    } else if (response.isSuccessful && result?.requires_verification == true) {
+                                        navController.navigate(
+                                            "verify_sms/${Uri.encode(result.phone ?: "")}/${Uri.encode(result.name ?: "")}/${Uri.encode(result.email ?: cleanEmail)}/${Uri.encode(result.dni ?: "")}"
+                                        ) {
+                                            popUpTo("login") { inclusive = true }
+                                            launchSingleTop = true
                                         }
                                     } else {
-                                        errorMessage = "Error del servidor: ${response.code()}"
+                                        errorMessage = result?.message ?: "Credenciales incorrectas"
                                     }
                                 }
 
@@ -596,7 +615,6 @@ private fun PeruchoTextField(
                 disabledContainerColor = GrayBg,
                 focusedIndicatorColor = GrayBorder,
                 unfocusedIndicatorColor = GrayBorder,
-                disabledIndicatorColor = GrayBorder,
                 cursorColor = BluePrimary,
                 focusedTextColor = DarkText,
                 unfocusedTextColor = DarkText

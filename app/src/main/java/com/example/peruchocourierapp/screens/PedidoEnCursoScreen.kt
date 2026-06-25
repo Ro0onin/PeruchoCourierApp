@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Looper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -42,6 +43,9 @@ import com.example.peruchocourierapp.services.LocationForegroundService
 import com.example.peruchocourierapp.utils.obtenerRutaCompleta
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.Priority
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
@@ -54,6 +58,13 @@ import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 import com.example.peruchocourierapp.models.DriverLocationResponse
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import com.google.android.gms.maps.model.BitmapDescriptor
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import android.content.Context
+import com.example.peruchocourierapp.R
+
 
 private val DriverBlue = Color(0xFF1A4FBF)
 private val DriverBg = Color(0xFFF4F6FB)
@@ -70,6 +81,16 @@ private fun normalizarEstadoPedido(estado: String?): String {
         "en_transito" -> "en_camino"
         else -> (estado ?: "").trim().lowercase()
     }
+}
+
+private fun interpolarLatLng(
+    inicio: LatLng,
+    fin: LatLng,
+    fraccion: Float
+): LatLng {
+    val lat = inicio.latitude + (fin.latitude - inicio.latitude) * fraccion
+    val lng = inicio.longitude + (fin.longitude - inicio.longitude) * fraccion
+    return LatLng(lat, lng)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -111,6 +132,10 @@ fun PedidoEnCursoScreen(
         position = CameraPosition.fromLatLngZoom(LimaDefault, 14f)
     }
 
+    val driverMarkerState = rememberMarkerState(position = LimaDefault)
+    var driverMarkerReady by remember { mutableStateOf(false) }
+    var followDriver by remember { mutableStateOf(false) }
+
     var hasLocationPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -147,10 +172,67 @@ fun PedidoEnCursoScreen(
     ) { granted ->
         hasNotificationPermission = granted
     }
+
+    /*
+     * GPS local en vivo para que el repartidor vea su cursor/marcador
+     * moverse fluido mientras conduce. Esto NO depende del backend.
+     */
+    DisposableEffect(
+        hasLocationPermission,
+        activeOrder?.id,
+        activeOrder?.estado
+    ) {
+        val estado = normalizarEstadoPedido(activeOrder?.estado)
+
+        if (
+            !hasLocationPermission ||
+            activeOrder?.id == null ||
+            estado == "entregado"
+        ) {
+            onDispose { }
+        } else {
+            val locationRequest = LocationRequest.Builder(
+                Priority.PRIORITY_HIGH_ACCURACY,
+                1000L
+            )
+                .setMinUpdateIntervalMillis(500L)
+                .setMinUpdateDistanceMeters(8f)
+                .build()
+
+            val locationCallback = object : LocationCallback() {
+                override fun onLocationResult(locationResult: LocationResult) {
+                    val location = locationResult.lastLocation ?: return
+
+                    currentLat = location.latitude
+                    currentLng = location.longitude
+                }
+            }
+
+            try {
+                fusedLocationClient.requestLocationUpdates(
+                    locationRequest,
+                    locationCallback,
+                    Looper.getMainLooper()
+                )
+            } catch (e: SecurityException) {
+                errorMessage = "Permiso de ubicación requerido"
+            }
+
+            onDispose {
+                fusedLocationClient.removeLocationUpdates(locationCallback)
+            }
+        }
+    }
+    /*
+     * Fallback: solo consulta la última ubicación guardada en servidor
+     * si todavía no tenemos GPS local. Para el panel del repartidor,
+     * el movimiento fluido debe salir del GPS del celular, no del servidor.
+     */
     LaunchedEffect(activeOrder?.id, activeOrder?.estado) {
         while (
             activeOrder?.id != null &&
-            normalizarEstadoPedido(activeOrder?.estado) != "entregado"
+            normalizarEstadoPedido(activeOrder?.estado) != "entregado" &&
+            (currentLat == 0.0 || currentLng == 0.0)
         ) {
             val orderId = activeOrder?.id ?: break
 
@@ -179,7 +261,7 @@ fun PedidoEnCursoScreen(
                     ) {}
                 })
 
-            delay(3000)
+            delay(5000)
         }
     }
 
@@ -351,60 +433,117 @@ fun PedidoEnCursoScreen(
         }
     }
 
-    LaunchedEffect(currentLat, currentLng, activeOrder?.id, activeOrder?.estado) {
-        val estado = normalizarEstadoPedido(activeOrder?.estado)
+    /*
+     * Recalcula la ruta cada cierto tiempo, no en cada frame de GPS.
+     * Si recalculas en cada movimiento del repartidor, el mapa puede sentirse pesado.
+     */
+    LaunchedEffect(activeOrder?.id, activeOrder?.estado) {
+        while (
+            activeOrder?.id != null &&
+            normalizarEstadoPedido(activeOrder?.estado) != "entregado"
+        ) {
+            val estado = normalizarEstadoPedido(activeOrder?.estado)
 
-        val pickupLat = activeOrder?.pickup_lat?.toDoubleOrNull()
-        val pickupLng = activeOrder?.pickup_lng?.toDoubleOrNull()
-        val dropLat = activeOrder?.dropoff_lat?.toDoubleOrNull()
-        val dropLng = activeOrder?.dropoff_lng?.toDoubleOrNull()
+            val pickupLat = activeOrder?.pickup_lat?.toDoubleOrNull()
+            val pickupLng = activeOrder?.pickup_lng?.toDoubleOrNull()
+            val dropLat = activeOrder?.dropoff_lat?.toDoubleOrNull()
+            val dropLng = activeOrder?.dropoff_lng?.toDoubleOrNull()
 
-        val origin = if (currentLat != 0.0 && currentLng != 0.0) {
-            "$currentLat,$currentLng"
-        } else {
-            null
-        }
-
-        val destination = when (estado) {
-            "asignado" -> {
-                if (pickupLat != null && pickupLng != null) "$pickupLat,$pickupLng" else null
+            val origin = if (currentLat != 0.0 && currentLng != 0.0) {
+                "$currentLat,$currentLng"
+            } else {
+                null
             }
 
-            "recogido", "en_camino" -> {
-                if (dropLat != null && dropLng != null) "$dropLat,$dropLng" else null
+            val destination = when (estado) {
+                "asignado" -> {
+                    if (pickupLat != null && pickupLng != null) "$pickupLat,$pickupLng" else null
+                }
+
+                "recogido", "en_camino" -> {
+                    if (dropLat != null && dropLng != null) "$dropLat,$dropLng" else null
+                }
+
+                else -> null
             }
 
-            else -> null
-        }
+            if (origin != null && destination != null) {
+                val resultado = withContext(Dispatchers.IO) {
+                    obtenerRutaCompleta(
+                        origin = origin,
+                        destination = destination
+                    )
+                }
 
-        if (origin != null && destination != null) {
-            val resultado = withContext(Dispatchers.IO) {
-                obtenerRutaCompleta(
-                    origin = origin,
-                    destination = destination
-                )
+                ruta = resultado.puntos
+                duracionMin = resultado.duracionMin
+            } else {
+                ruta = emptyList()
+                duracionMin = 0
             }
 
-            ruta = resultado.puntos
-            duracionMin = resultado.duracionMin
-        } else {
-            ruta = emptyList()
-            duracionMin = 0
+            delay(15000)
         }
     }
 
     var centeredOnce by remember { mutableStateOf(false) }
 
+    /*
+     * Animación del marcador del repartidor.
+     * En vez de saltar de un punto a otro, interpola varios puntos
+     * para que parezca que el cursor está manejando en vivo.
+     */
     LaunchedEffect(currentLat, currentLng) {
-        if (!centeredOnce && currentLat != 0.0 && currentLng != 0.0) {
-            centeredOnce = true
-            cameraPositionState.move(
-                CameraUpdateFactory.newLatLngZoom(
-                    LatLng(currentLat, currentLng),
-                    16f
+        if (currentLat == 0.0 || currentLng == 0.0) return@LaunchedEffect
+
+        val nuevaPosicion = LatLng(currentLat, currentLng)
+
+        if (!driverMarkerReady) {
+            driverMarkerReady = true
+            driverMarkerState.position = nuevaPosicion
+
+            if (!centeredOnce) {
+                centeredOnce = true
+                cameraPositionState.move(
+                    CameraUpdateFactory.newLatLngZoom(nuevaPosicion, 17f)
                 )
-            )
+            }
+
+            return@LaunchedEffect
         }
+
+        val posicionInicial = driverMarkerState.position
+
+        val distanciaMetros = FloatArray(1)
+        android.location.Location.distanceBetween(
+            posicionInicial.latitude,
+            posicionInicial.longitude,
+            nuevaPosicion.latitude,
+            nuevaPosicion.longitude,
+            distanciaMetros
+        )
+
+        if (distanciaMetros[0] < 8f) {
+            return@LaunchedEffect
+        }
+
+        val frames = 30
+        val duracionMs = 700L
+        val frameDelay = duracionMs / frames
+
+        repeat(frames) { index ->
+            val fraccion = (index + 1).toFloat() / frames.toFloat()
+
+            driverMarkerState.position = interpolarLatLng(
+                inicio = posicionInicial,
+                fin = nuevaPosicion,
+                fraccion = fraccion
+            )
+
+            delay(frameDelay)
+        }
+
+        driverMarkerState.position = nuevaPosicion
     }
 
     val estadoActual = normalizarEstadoPedido(activeOrder?.estado)
@@ -551,20 +690,32 @@ fun PedidoEnCursoScreen(
                     if (pickupPoint != null && estadoActual == "asignado") {
                         Marker(
                             state = MarkerState(pickupPoint),
-                            title = "Recojo"
+                            title = "Recojo",
+                            icon = bitmapDescriptorFromDrawableSafe(
+                                context,
+                                R.drawable.ic_pin_recojo,
+                                100,
+                                100
+                            )
                         )
                     }
 
                     if (dropPoint != null && estadoActual != "entregado") {
                         Marker(
                             state = MarkerState(dropPoint),
-                            title = "Entrega"
+                            title = "Entrega",
+                            icon = bitmapDescriptorFromDrawableSafe(
+                                context,
+                                R.drawable.ic_pin_entrega,
+                                100,
+                                100
+                            )
                         )
                     }
 
-                    if (currentLat != 0.0 && currentLng != 0.0) {
+                    if (driverMarkerReady) {
                         Marker(
-                            state = MarkerState(LatLng(currentLat, currentLng)),
+                            state = driverMarkerState,
                             title = "Repartidor"
                         )
                     }
@@ -595,6 +746,8 @@ fun PedidoEnCursoScreen(
 
                 IconButton(
                     onClick = {
+                        followDriver = true
+
                         if (currentLat != 0.0 && currentLng != 0.0) {
                             cameraPositionState.move(
                                 CameraUpdateFactory.newLatLngZoom(
@@ -1022,7 +1175,7 @@ private fun RouteLinePedido(
 
         Box(
             modifier = Modifier
-                .padding(start = 4.5.dp, top = 3.dp, bottom = 3.dp)
+                .padding(start = 10.dp, top = 3.dp, bottom = 3.dp)
                 .width(1.5.dp)
                 .height(14.dp)
                 .background(DriverBorder)
@@ -1038,12 +1191,15 @@ private fun RouteRowPedido(
     text: String
 ) {
     Row(verticalAlignment = Alignment.Top) {
-        Box(
-            modifier = Modifier
-                .padding(top = 4.dp)
-                .size(10.dp)
-                .clip(CircleShape)
-                .background(color)
+        Icon(
+            imageVector = if (color == DriverGreen) {
+                Icons.Default.LocationOn
+            } else {
+                Icons.Default.Place
+            },
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(22.dp)
         )
 
         Spacer(modifier = Modifier.width(9.dp))
@@ -1238,5 +1394,26 @@ fun StatCard(
                 color = Color.Gray
             )
         }
+    }
+}
+private fun bitmapDescriptorFromDrawableSafe(
+    context: Context,
+    drawableId: Int,
+    width: Int,
+    height: Int
+): BitmapDescriptor {
+    return try {
+        val drawable = ContextCompat.getDrawable(context, drawableId)
+            ?: return BitmapDescriptorFactory.defaultMarker()
+
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+
+        BitmapDescriptorFactory.fromBitmap(bitmap)
+    } catch (e: Exception) {
+        BitmapDescriptorFactory.defaultMarker()
     }
 }

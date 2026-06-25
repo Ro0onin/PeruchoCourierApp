@@ -96,7 +96,7 @@ class LocationForegroundService : Service() {
 
     private fun buildNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.cuarta_notificacion)
             .setContentTitle("Perucho Courier")
             .setContentText("Compartiendo ubicación del pedido en curso")
             .setPriority(NotificationCompat.PRIORITY_LOW)

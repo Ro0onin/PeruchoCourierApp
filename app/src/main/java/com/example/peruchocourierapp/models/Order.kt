@@ -52,5 +52,7 @@ data class Order(
     val driver_id: String? = null,
     val driver_lat: String? = null,
     val driver_lng: String? = null,
-    val driver_location_updated_at: String? = null
+    val driver_location_updated_at: String? = null,
+    val tarifa_motorizado: String? = null,
+    val destinatario_paga: Int? = 0,
 )

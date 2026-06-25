@@ -34,7 +34,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.peruchocourierapp.R
-import com.example.peruchocourierapp.SessionManager
 import com.example.peruchocourierapp.api.RetrofitClient
 import com.example.peruchocourierapp.models.BasicResponse
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -60,7 +59,6 @@ fun CompletarPerfilGoogleScreen(
     emailParam: String
 ) {
     val context = LocalContext.current
-    val sessionManager = SessionManager(context)
 
     var dni by remember { mutableStateOf("") }
     var telefono by remember { mutableStateOf("") }
@@ -72,6 +70,12 @@ fun CompletarPerfilGoogleScreen(
 
     var errorMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+
+    val nombreGoogle = remember(emailParam) {
+        emailParam.substringBefore("@").replaceFirstChar {
+            if (it.isLowerCase()) it.titlecase() else it.toString()
+        }
+    }
 
     val frontLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -92,6 +96,7 @@ fun CompletarPerfilGoogleScreen(
             inputStream.close()
 
             val requestBody = bytes.toRequestBody("image/*".toMediaTypeOrNull())
+
             MultipartBody.Part.createFormData(
                 partName,
                 "$partName.jpg",
@@ -305,22 +310,13 @@ fun CompletarPerfilGoogleScreen(
                                     response: Response<BasicResponse>
                                 ) {
                                     isLoading = false
-
                                     val result = response.body()
 
                                     if (response.isSuccessful && result?.success == true) {
-                                        sessionManager.saveUserSession(
-                                            name = sessionManager.getUserName() ?: "",
-                                            email = emailParam,
-                                            phone = telefono,
-                                            role = "cliente",
-                                            dni = dni
-                                        )
-
                                         navController.navigate(
-                                            "verify_sms/$telefono/${sessionManager.getUserName() ?: ""}/$emailParam/$dni"
+                                            "verify_sms/${Uri.encode(telefono)}/${Uri.encode(nombreGoogle)}/${Uri.encode(emailParam)}/${Uri.encode(dni)}"
                                         ) {
-                                            popUpTo("completar_perfil_google/$emailParam") {
+                                            popUpTo("completar_perfil_google/${Uri.encode(emailParam)}") {
                                                 inclusive = true
                                             }
                                             launchSingleTop = true

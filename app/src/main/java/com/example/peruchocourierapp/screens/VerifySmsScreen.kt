@@ -45,8 +45,69 @@ fun VerifySmsScreen(
     var message by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var isResending by remember { mutableStateOf(false) }
+    var initialCodeSent by remember { mutableStateOf(false) }
+
+    val cleanPhone = remember(phoneParam) {
+        phoneParam.replace(" ", "").trim()
+    }
+
+    val phoneForTwilio = remember(cleanPhone) {
+        if (cleanPhone.startsWith("+51")) cleanPhone else "+51$cleanPhone"
+    }
 
     val isSuccess = message.contains("correctamente", ignoreCase = true)
+
+    fun enviarCodigoSms(esReenvio: Boolean = false) {
+        if (phoneForTwilio.isBlank()) {
+            message = "Número de teléfono inválido"
+            return
+        }
+
+        if (esReenvio) {
+            isResending = true
+        }
+
+        message = if (esReenvio) "" else "Enviando código SMS..."
+
+        RetrofitClient.instance.sendSmsCode(phoneForTwilio)
+            .enqueue(object : Callback<BasicResponse> {
+                override fun onResponse(
+                    call: Call<BasicResponse>,
+                    response: Response<BasicResponse>
+                ) {
+                    if (esReenvio) {
+                        isResending = false
+                    }
+
+                    val result = response.body()
+
+                    message = if (response.isSuccessful && result?.success == true) {
+                        if (esReenvio) {
+                            "Código reenviado correctamente"
+                        } else {
+                            "Código enviado correctamente"
+                        }
+                    } else {
+                        result?.message ?: "No se pudo enviar el código"
+                    }
+                }
+
+                override fun onFailure(call: Call<BasicResponse>, t: Throwable) {
+                    if (esReenvio) {
+                        isResending = false
+                    }
+
+                    message = "Error: ${t.message}"
+                }
+            })
+    }
+
+    LaunchedEffect(phoneForTwilio) {
+        if (!initialCodeSent) {
+            initialCodeSent = true
+            enviarCodigoSms(esReenvio = false)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -78,7 +139,7 @@ fun VerifySmsScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "Ingresa el código SMS enviado a:\n$phoneParam",
+            text = "Ingresa el código SMS enviado a:\n$phoneForTwilio",
             fontSize = 14.sp,
             color = PTextoSub,
             textAlign = TextAlign.Center
@@ -131,7 +192,7 @@ fun VerifySmsScreen(
                 isLoading = true
                 message = ""
 
-                RetrofitClient.instance.verifySmsCode(phoneParam, code)
+                RetrofitClient.instance.verifySmsCode(phoneForTwilio, code)
                     .enqueue(object : Callback<BasicResponse> {
                         override fun onResponse(
                             call: Call<BasicResponse>,
@@ -144,7 +205,7 @@ fun VerifySmsScreen(
                                 sessionManager.saveUserSession(
                                     name = nameParam,
                                     email = emailParam,
-                                    phone = phoneParam,
+                                    phone = phoneForTwilio,
                                     role = "cliente",
                                     dni = dniParam
                                 )
@@ -174,7 +235,7 @@ fun VerifySmsScreen(
                 containerColor = PNegro,
                 contentColor = Color.White
             ),
-            enabled = !isLoading
+            enabled = !isLoading && !isResending
         ) {
             Text(
                 text = if (isLoading) "Verificando..." else "Verificar código",
@@ -185,32 +246,9 @@ fun VerifySmsScreen(
         Spacer(modifier = Modifier.height(12.dp))
 
         TextButton(
-            enabled = !isResending,
+            enabled = !isResending && !isLoading,
             onClick = {
-                isResending = true
-                message = ""
-
-                RetrofitClient.instance.sendSmsCode(phoneParam)
-                    .enqueue(object : Callback<BasicResponse> {
-                        override fun onResponse(
-                            call: Call<BasicResponse>,
-                            response: Response<BasicResponse>
-                        ) {
-                            isResending = false
-                            val result = response.body()
-
-                            message = if (response.isSuccessful && result?.success == true) {
-                                "Código reenviado correctamente"
-                            } else {
-                                result?.message ?: "No se pudo reenviar el código"
-                            }
-                        }
-
-                        override fun onFailure(call: Call<BasicResponse>, t: Throwable) {
-                            isResending = false
-                            message = "Error: ${t.message}"
-                        }
-                    })
+                enviarCodigoSms(esReenvio = true)
             }
         ) {
             Text(
