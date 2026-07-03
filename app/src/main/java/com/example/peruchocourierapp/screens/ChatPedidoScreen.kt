@@ -1,11 +1,23 @@
 package com.example.peruchocourierapp.screens
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,7 +28,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,28 +40,38 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.navigation.NavController
+import coil.compose.AsyncImage
 import com.example.peruchocourierapp.SessionManager
 import com.example.peruchocourierapp.api.RetrofitClient
 import com.example.peruchocourierapp.models.ActiveOrderResponse
 import com.example.peruchocourierapp.models.BasicResponse
+import com.example.peruchocourierapp.models.CallContactsResponse
 import com.example.peruchocourierapp.models.ChatMessage
 import com.example.peruchocourierapp.models.GetChatMessagesResponse
-import com.example.peruchocourierapp.models.CallContactsResponse
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import kotlinx.coroutines.delay
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import android.content.Intent
-import androidx.compose.material.icons.filled.Phone
+import java.io.File
+import kotlin.math.pow
+
 private val CNegro = Color(0xFF111111)
 private val CAzul = Color(0xFF1A4FBF)
 private val CAzulOscuro = Color(0xFF0D3280)
@@ -70,7 +95,8 @@ private data class ChatMensajeUi(
     val hora: String,
     val senderNombre: String,
     val senderInitials: String,
-    val leido: Boolean
+    val leido: Boolean,
+    val imagenUrl: String? = null
 )
 
 @Composable
@@ -86,6 +112,7 @@ fun ChatPedidoScreen(
 
     val myEmail = sessionManager.getUserEmail()?.trim().orEmpty()
     val myName = sessionManager.getUserName()?.trim().orEmpty().ifBlank { "Yo" }
+
     val receiverEmailDecoded = remember(receiverEmail) {
         Uri.decode(receiverEmail).trim()
     }
@@ -103,23 +130,39 @@ fun ChatPedidoScreen(
     var telefonoRemitente by remember { mutableStateOf("") }
     var telefonoDestinatario by remember { mutableStateOf("") }
     var showCallMenu by remember { mutableStateOf(false) }
+    var photoUri by remember { mutableStateOf<Uri?>(null) }
+    var imagenSeleccionada by remember { mutableStateOf<String?>(null) }
 
     fun mapearMensaje(msg: ChatMessage): ChatMensajeUi {
         val isMine = msg.sender_email.trim().equals(myEmail, ignoreCase = true)
+
         val nombre = if (isMine) {
             myName
         } else {
             msg.sender_email.substringBefore("@").replaceFirstChar { it.uppercase() }
         }
 
+        val imagenUrl = if (msg.mensaje.startsWith("[imagen]")) {
+            val ruta = msg.mensaje.removePrefix("[imagen]").trim()
+
+            when {
+                ruta.startsWith("http") -> ruta
+                ruta.startsWith("uploads/") -> "https://peruchocourier.com/perucho_api/$ruta"
+                else -> "https://peruchocourier.com/perucho_api/uploads/chat/$ruta"
+            }
+        } else {
+            null
+        }
+
         return ChatMensajeUi(
             id = msg.id,
             tipo = if (isMine) TipoBurbuja.ENVIADO else TipoBurbuja.RECIBIDO,
-            texto = msg.mensaje,
+            texto = if (imagenUrl != null) "" else msg.mensaje,
             hora = formatearHoraChat(msg.created_at),
             senderNombre = if (isMine) "Tú" else nombre,
             senderInitials = obtenerInicialesChat(nombre),
-            leido = msg.leido == 1
+            leido = msg.leido == 1,
+            imagenUrl = imagenUrl
         )
     }
 
@@ -130,15 +173,8 @@ fun ChatPedidoScreen(
             orderId = orderId,
             userEmail = myEmail
         ).enqueue(object : Callback<BasicResponse> {
-            override fun onResponse(
-                call: Call<BasicResponse>,
-                response: Response<BasicResponse>
-            ) {}
-
-            override fun onFailure(
-                call: Call<BasicResponse>,
-                t: Throwable
-            ) {}
+            override fun onResponse(call: Call<BasicResponse>, response: Response<BasicResponse>) {}
+            override fun onFailure(call: Call<BasicResponse>, t: Throwable) {}
         })
     }
 
@@ -167,10 +203,7 @@ fun ChatPedidoScreen(
                 }
             }
 
-            override fun onFailure(
-                call: Call<ActiveOrderResponse>,
-                t: Throwable
-            ) {}
+            override fun onFailure(call: Call<ActiveOrderResponse>, t: Throwable) {}
         })
     }
 
@@ -199,10 +232,7 @@ fun ChatPedidoScreen(
                     }
                 }
 
-                override fun onFailure(
-                    call: Call<GetChatMessagesResponse>,
-                    t: Throwable
-                ) {
+                override fun onFailure(call: Call<GetChatMessagesResponse>, t: Throwable) {
                     isLoading = false
                     errorMsg = "Sin conexión"
                 }
@@ -256,10 +286,7 @@ fun ChatPedidoScreen(
                 }
             }
 
-            override fun onFailure(
-                call: Call<BasicResponse>,
-                t: Throwable
-            ) {
+            override fun onFailure(call: Call<BasicResponse>, t: Throwable) {
                 isSending = false
                 errorMsg = "No se pudo enviar"
                 cargarEstadoPedido()
@@ -267,6 +294,125 @@ fun ChatPedidoScreen(
         })
     }
 
+    fun subirFotoChat(uri: Uri) {
+        if (chatBloqueado) return
+
+        try {
+            val tempFile = File(
+                context.cacheDir,
+                "upload_chat_${orderId}_${System.currentTimeMillis()}.jpg"
+            )
+
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                tempFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            } ?: run {
+                errorMsg = "No se pudo leer la foto"
+                return
+            }
+
+            val requestFile = tempFile.asRequestBody("image/jpeg".toMediaTypeOrNull())
+
+            val fotoPart = MultipartBody.Part.createFormData(
+                "foto_chat",
+                tempFile.name,
+                requestFile
+            )
+
+            val orderBody = orderId.toString().toRequestBody("text/plain".toMediaTypeOrNull())
+            val senderBody = myEmail.toRequestBody("text/plain".toMediaTypeOrNull())
+            val receiverBody = receiverEmailDecoded.toRequestBody("text/plain".toMediaTypeOrNull())
+
+            isSending = true
+
+            RetrofitClient.instance.sendChatPhoto(
+                orderBody,
+                senderBody,
+                receiverBody,
+                fotoPart
+            ).enqueue(object : Callback<BasicResponse> {
+                override fun onResponse(
+                    call: Call<BasicResponse>,
+                    response: Response<BasicResponse>
+                ) {
+                    isSending = false
+
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        errorMsg = ""
+                        cargarMensajes()
+                    } else {
+                        errorMsg = response.body()?.message ?: "No se pudo subir la foto"
+                    }
+                }
+
+                override fun onFailure(call: Call<BasicResponse>, t: Throwable) {
+                    isSending = false
+                    errorMsg = t.message ?: "No se pudo subir la foto"
+                }
+            })
+
+        } catch (e: Exception) {
+            isSending = false
+            errorMsg = e.message ?: "Error al procesar la foto"
+        }
+    }
+
+    fun crearUriFotoChat(): Uri {
+        val file = File.createTempFile(
+            "chat_${orderId}_",
+            ".jpg",
+            context.cacheDir
+        )
+
+        return FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && photoUri != null) {
+            subirFotoChat(photoUri!!)
+        } else {
+            errorMsg = "No se tomó ninguna foto"
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val uri = crearUriFotoChat()
+            photoUri = uri
+            cameraLauncher.launch(uri)
+        } else {
+            errorMsg = "Permiso de cámara denegado"
+        }
+    }
+
+    fun abrirCamaraChat() {
+        if (chatBloqueado) {
+            errorMsg = "Este chat está cerrado porque el pedido fue entregado"
+            return
+        }
+
+        if (
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            val uri = crearUriFotoChat()
+            photoUri = uri
+            cameraLauncher.launch(uri)
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
 
     fun llamar(numero: String) {
         val numeroLimpio = numero.trim()
@@ -301,10 +447,7 @@ fun ChatPedidoScreen(
                     }
                 }
 
-                override fun onFailure(
-                    call: Call<CallContactsResponse>,
-                    t: Throwable
-                ) {}
+                override fun onFailure(call: Call<CallContactsResponse>, t: Throwable) {}
             })
     }
 
@@ -365,10 +508,7 @@ fun ChatPedidoScreen(
                 mensajes.isEmpty() -> {
                     LazyColumn(
                         state = listState,
-                        contentPadding = PaddingValues(
-                            horizontal = 12.dp,
-                            vertical = 12.dp
-                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
@@ -380,9 +520,7 @@ fun ChatPedidoScreen(
                         }
 
                         if (chatBloqueado) {
-                            item {
-                                ChatCerradoMensaje()
-                            }
+                            item { ChatCerradoMensaje() }
                         } else {
                             item {
                                 EmptyChatState(
@@ -398,10 +536,7 @@ fun ChatPedidoScreen(
                 else -> {
                     LazyColumn(
                         state = listState,
-                        contentPadding = PaddingValues(
-                            horizontal = 12.dp,
-                            vertical = 12.dp
-                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
@@ -417,15 +552,20 @@ fun ChatPedidoScreen(
                             key = { it.id }
                         ) { msg ->
                             when (msg.tipo) {
-                                TipoBurbuja.ENVIADO -> MensajeEnviado(msg)
-                                TipoBurbuja.RECIBIDO -> MensajeRecibido(msg)
+                                TipoBurbuja.ENVIADO -> MensajeEnviado(
+                                    msg = msg,
+                                    onImageClick = { imagenSeleccionada = it }
+                                )
+
+                                TipoBurbuja.RECIBIDO -> MensajeRecibido(
+                                    msg = msg,
+                                    onImageClick = { imagenSeleccionada = it }
+                                )
                             }
                         }
 
                         if (chatBloqueado) {
-                            item {
-                                ChatCerradoMensaje()
-                            }
+                            item { ChatCerradoMensaje() }
                         }
                     }
                 }
@@ -449,10 +589,7 @@ fun ChatPedidoScreen(
                         color = Color.White,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(
-                            horizontal = 16.dp,
-                            vertical = 8.dp
-                        )
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                 }
             }
@@ -465,7 +602,8 @@ fun ChatPedidoScreen(
                 value = inputText,
                 onChange = { inputText = it },
                 isSending = isSending,
-                onSend = { enviarMensaje() }
+                onSend = { enviarMensaje() },
+                onCameraClick = { abrirCamaraChat() }
             )
         }
     }
@@ -483,8 +621,122 @@ fun ChatPedidoScreen(
             }
         )
     }
+
+    if (imagenSeleccionada != null) {
+        ImagenZoomDialog(
+            imageUrl = imagenSeleccionada!!,
+            onDismiss = { imagenSeleccionada = null }
+        )
+    }
 }
 
+@Composable
+private fun ImagenZoomDialog(
+    imageUrl: String,
+    onDismiss: () -> Unit
+) {
+    var scale by remember(imageUrl) { mutableStateOf(1f) }
+    var offset by remember(imageUrl) { mutableStateOf(Offset.Zero) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+            contentAlignment = Alignment.Center
+        ) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = "Imagen ampliada",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = offset.x
+                        translationY = offset.y
+                    }
+                    .pointerInput(imageUrl) {
+                        detectTapGestures(
+                            onDoubleTap = { tapOffset ->
+                                if (scale > 1f) {
+                                    scale = 1f
+                                    offset = Offset.Zero
+                                } else {
+                                    scale = 3.2f
+
+                                    val center = Offset(
+                                        size.width / 2f,
+                                        size.height / 2f
+                                    )
+
+                                    offset = (center - tapOffset) * (scale - 1f)
+                                }
+                            }
+                        )
+                    }
+                    .pointerInput(imageUrl) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+
+                            val zoomSuave = zoom.toDouble()
+                                .pow(2.2)
+                                .toFloat()
+
+                            val newScale = (scale * zoomSuave)
+                                .coerceIn(1f, 8f)
+
+                            offset = if (newScale <= 1f) {
+                                Offset.Zero
+                            } else {
+                                offset + (pan * 2.2f)
+                            }
+
+                            scale = newScale
+                        }
+                    },
+                contentScale = ContentScale.Fit
+            )
+
+            if (scale > 1f) {
+                TextButton(
+                    onClick = {
+                        scale = 1f
+                        offset = Offset.Zero
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 20.dp, end = 20.dp)
+                        .clip(RoundedCornerShape(50.dp))
+                        .background(Color.White.copy(alpha = 0.18f))
+                ) {
+                    Text(
+                        text = "Restablecer",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(20.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.55f))
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Cerrar",
+                    tint = Color.White
+                )
+            }
+        }
+    }
+}
 @Composable
 private fun ChatTopBar(
     orderInfo: String,
@@ -623,6 +875,170 @@ private fun ChatTopBar(
     )
 }
 
+@Composable
+private fun MensajeEnviado(
+    msg: ChatMensajeUi,
+    onImageClick: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        Column(horizontalAlignment = Alignment.End) {
+            Box(
+                modifier = Modifier
+                    .clip(
+                        RoundedCornerShape(
+                            topStart = 16.dp,
+                            topEnd = 4.dp,
+                            bottomStart = 16.dp,
+                            bottomEnd = 16.dp
+                        )
+                    )
+                    .background(Brush.linearGradient(listOf(CRojo, CRojoOscuro)))
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+                    .widthIn(max = 240.dp)
+            ) {
+                if (msg.imagenUrl != null) {
+                    AsyncImage(
+                        model = msg.imagenUrl,
+                        contentDescription = "Imagen del chat",
+                        modifier = Modifier
+                            .width(210.dp)
+                            .height(210.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { onImageClick(msg.imagenUrl) },
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Text(
+                        text = msg.texto,
+                        fontSize = 13.sp,
+                        color = Color.White,
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                modifier = Modifier.padding(top = 3.dp, end = 2.dp)
+            ) {
+                Text(text = msg.hora, fontSize = 10.sp, color = CMuted)
+
+                Text(
+                    text = if (msg.leido) "✓✓" else "✓",
+                    fontSize = 10.sp,
+                    color = if (msg.leido) CVerde else CMuted
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(6.dp))
+
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(Brush.linearGradient(listOf(CRojoOscuro, CRojo))),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = msg.senderInitials.ifBlank { "YO" },
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Black,
+                color = Color.White
+            )
+        }
+    }
+}
+
+@Composable
+private fun MensajeRecibido(
+    msg: ChatMensajeUi,
+    onImageClick: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(Brush.linearGradient(listOf(CAzulOscuro, CAzul))),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = msg.senderInitials.ifBlank { "PC" },
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Black,
+                color = Color.White
+            )
+        }
+
+        Spacer(modifier = Modifier.width(6.dp))
+
+        Column {
+            if (msg.senderNombre.isNotBlank()) {
+                Text(
+                    text = msg.senderNombre,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = CMuted,
+                    modifier = Modifier.padding(bottom = 2.dp, start = 4.dp)
+                )
+            }
+
+            Surface(
+                shape = RoundedCornerShape(
+                    topStart = 4.dp,
+                    topEnd = 16.dp,
+                    bottomStart = 16.dp,
+                    bottomEnd = 16.dp
+                ),
+                color = CBlancoMsg,
+                shadowElevation = 2.dp,
+                modifier = Modifier.widthIn(max = 240.dp)
+            ) {
+                if (msg.imagenUrl != null) {
+                    AsyncImage(
+                        model = msg.imagenUrl,
+                        contentDescription = "Imagen del chat",
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .width(210.dp)
+                            .height(210.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { onImageClick(msg.imagenUrl) },
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Text(
+                        text = msg.texto,
+                        fontSize = 13.sp,
+                        color = CNegro,
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)
+                    )
+                }
+            }
+
+            Text(
+                text = msg.hora,
+                fontSize = 10.sp,
+                color = CMuted,
+                modifier = Modifier.padding(top = 3.dp, start = 4.dp)
+            )
+        }
+    }
+}
 
 @Composable
 private fun CallContactsDialog(
@@ -837,146 +1253,12 @@ private fun EmptyChatState(
 }
 
 @Composable
-private fun MensajeEnviado(msg: ChatMensajeUi) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.Bottom
-    ) {
-        Column(horizontalAlignment = Alignment.End) {
-            Box(
-                modifier = Modifier
-                    .clip(
-                        RoundedCornerShape(
-                            topStart = 16.dp,
-                            topEnd = 4.dp,
-                            bottomStart = 16.dp,
-                            bottomEnd = 16.dp
-                        )
-                    )
-                    .background(Brush.linearGradient(listOf(CRojo, CRojoOscuro)))
-                    .padding(horizontal = 12.dp, vertical = 9.dp)
-                    .widthIn(max = 230.dp)
-            ) {
-                Text(
-                    text = msg.texto,
-                    fontSize = 13.sp,
-                    color = Color.White,
-                    fontWeight = FontWeight.Medium,
-                    lineHeight = 18.sp
-                )
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
-                modifier = Modifier.padding(top = 3.dp, end = 2.dp)
-            ) {
-                Text(
-                    text = msg.hora,
-                    fontSize = 10.sp,
-                    color = CMuted
-                )
-
-                Text(
-                    text = if (msg.leido) "✓✓" else "✓",
-                    fontSize = 10.sp,
-                    color = if (msg.leido) CVerde else CMuted
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.width(6.dp))
-
-        Box(
-            modifier = Modifier
-                .size(28.dp)
-                .clip(CircleShape)
-                .background(Brush.linearGradient(listOf(CRojoOscuro, CRojo))),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = msg.senderInitials.ifBlank { "YO" },
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.White
-            )
-        }
-    }
-}
-
-@Composable
-private fun MensajeRecibido(msg: ChatMensajeUi) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Start,
-        verticalAlignment = Alignment.Bottom
-    ) {
-        Box(
-            modifier = Modifier
-                .size(28.dp)
-                .clip(CircleShape)
-                .background(Brush.linearGradient(listOf(CAzulOscuro, CAzul))),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = msg.senderInitials.ifBlank { "PC" },
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.White
-            )
-        }
-
-        Spacer(modifier = Modifier.width(6.dp))
-
-        Column {
-            if (msg.senderNombre.isNotBlank()) {
-                Text(
-                    text = msg.senderNombre,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = CMuted,
-                    modifier = Modifier.padding(bottom = 2.dp, start = 4.dp)
-                )
-            }
-
-            Surface(
-                shape = RoundedCornerShape(
-                    topStart = 4.dp,
-                    topEnd = 16.dp,
-                    bottomStart = 16.dp,
-                    bottomEnd = 16.dp
-                ),
-                color = CBlancoMsg,
-                shadowElevation = 2.dp,
-                modifier = Modifier.widthIn(max = 230.dp)
-            ) {
-                Text(
-                    text = msg.texto,
-                    fontSize = 13.sp,
-                    color = CNegro,
-                    fontWeight = FontWeight.Medium,
-                    lineHeight = 18.sp,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)
-                )
-            }
-
-            Text(
-                text = msg.hora,
-                fontSize = 10.sp,
-                color = CMuted,
-                modifier = Modifier.padding(top = 3.dp, start = 4.dp)
-            )
-        }
-    }
-}
-
-@Composable
 private fun ChatInputBar(
     value: String,
     onChange: (String) -> Unit,
     isSending: Boolean,
-    onSend: () -> Unit
+    onSend: () -> Unit,
+    onCameraClick: () -> Unit
 ) {
     Surface(
         color = Color.White,
@@ -989,6 +1271,21 @@ private fun ChatInputBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            IconButton(
+                onClick = onCameraClick,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE8EFFE))
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CameraAlt,
+                    contentDescription = "Tomar foto",
+                    tint = CAzul,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
             Surface(
                 shape = RoundedCornerShape(22.dp),
                 color = CGrisFondo,
@@ -1228,6 +1525,7 @@ private fun EstadoPedidoChatBubble(
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
+
                     Text(
                         text = subtitulo,
                         color = CMuted,

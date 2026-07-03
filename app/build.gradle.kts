@@ -12,8 +12,8 @@ android {
         applicationId = "com.jeanpier.peruchocourier"
         minSdk = 24
         targetSdk = 36
-        versionCode = 16
-        versionName = "1.0.15"
+        versionCode = 19
+        versionName = "1.0.18"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val mapsApiKey = rootProject.file("local.properties")
             .readLines()
@@ -69,15 +69,14 @@ dependencies {
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
     implementation("com.google.maps.android:maps-compose:4.4.1")
-    implementation("com.google.android.libraries.places:places:3.5.0")
     implementation("io.coil-kt:coil-compose:2.6.0")
-    implementation("androidx.compose.material:material-icons-extended")
     implementation("io.coil-kt:coil-gif:2.6.0")
     implementation(libs.androidx.ui)
     implementation(platform("com.google.firebase:firebase-bom:34.0.0"))
     implementation("com.google.firebase:firebase-messaging")
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.android.gms:play-services-auth:21.2.0")
+    implementation("com.google.android.libraries.places:places:4.1.0")
 
 
 

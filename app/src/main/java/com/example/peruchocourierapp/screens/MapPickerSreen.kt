@@ -62,9 +62,9 @@ private fun estaDentroDePeru(lat: Double, lng: Double): Boolean {
 }
 
 private fun esPlusCode(texto: String): Boolean {
-    val limpio = texto.trim()
+    val limpio = texto.trim().uppercase()
     val primeraParte = limpio.substringBefore(",").trim()
-    return primeraParte.contains("+") && primeraParte.any { it.isDigit() }
+    return Regex("^[A-Z0-9]{4}\\+[A-Z0-9]{2,4}").containsMatchIn(primeraParte)
 }
 
 private fun limpiarDireccion(texto: String?): String {
@@ -121,6 +121,7 @@ fun MapPickerScreen(
     var predictions by remember { mutableStateOf<List<AutocompletePrediction>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
     var placesReady by remember { mutableStateOf(false) }
+    var modoMapa by remember { mutableStateOf(false) }
 
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -175,7 +176,12 @@ fun MapPickerScreen(
         }
     }
 
-    LaunchedEffect(searchText, placesReady) {
+    LaunchedEffect(searchText, placesReady, modoMapa) {
+        if (modoMapa) {
+            predictions = emptyList()
+            return@LaunchedEffect
+        }
+
         if (!placesReady || searchText.trim().length < 3) {
             predictions = emptyList()
             return@LaunchedEffect
@@ -220,28 +226,20 @@ fun MapPickerScreen(
                         cameraPositionState.move(
                             CameraUpdateFactory.newLatLngZoom(userLatLng, userZoom)
                         )
-
-                        selectedLocation = null
-                        selectedAddress = ""
-                        locationSelected = false
                     } else {
-                        selectedLocation = null
-                        selectedAddress = ""
-                        locationSelected = false
-
                         cameraPositionState.move(
                             CameraUpdateFactory.newLatLngZoom(limaCenter, 14f)
                         )
                     }
                 } else {
-                    selectedLocation = null
-                    selectedAddress = ""
-                    locationSelected = false
-
                     cameraPositionState.move(
                         CameraUpdateFactory.newLatLngZoom(limaCenter, 14f)
                     )
                 }
+
+                selectedLocation = null
+                selectedAddress = ""
+                locationSelected = false
             } catch (_: Exception) {
                 selectedLocation = null
                 selectedAddress = ""
@@ -262,14 +260,38 @@ fun MapPickerScreen(
         }
     }
 
-    LaunchedEffect(cameraPositionState.isMoving) {
+    LaunchedEffect(cameraPositionState.isMoving, modoMapa) {
+        if (!modoMapa) return@LaunchedEffect
+
         if (cameraPositionState.isMoving) {
             isMoving = true
             errorMessage = ""
+            return@LaunchedEffect
         }
 
-        if (!cameraPositionState.isMoving && isMoving) {
+        if (isMoving) {
             isMoving = false
+            isSearching = true
+
+            val center = cameraPositionState.position.target
+
+            if (estaDentroDePeru(center.latitude, center.longitude)) {
+                selectedLocation = center
+                locationSelected = true
+
+                selectedAddress = obtenerDireccionDesdeCoordenadas(
+                    context = context,
+                    lat = center.latitude,
+                    lng = center.longitude
+                )
+
+                searchText = selectedAddress
+                errorMessage = ""
+            } else {
+                errorMessage = "Solo puedes seleccionar ubicaciones dentro del Perú"
+            }
+
+            isSearching = false
         }
     }
 
@@ -282,7 +304,7 @@ fun MapPickerScreen(
                 isMyLocationEnabled = hasLocationPermission
             )
         ) {
-            if (locationSelected && selectedLocation != null) {
+            if (!modoMapa && locationSelected && selectedLocation != null) {
                 Marker(
                     state = MarkerState(position = selectedLocation!!),
                     title = if (tipo == "pickup") "Punto de recojo" else "Punto de entrega",
@@ -297,6 +319,18 @@ fun MapPickerScreen(
             }
         }
 
+        if (modoMapa) {
+            Image(
+                painter = painterResource(
+                    id = if (tipo == "pickup") R.drawable.ic_pin_recojo else R.drawable.ic_pin_entrega
+                ),
+                contentDescription = null,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(58.dp)
+                    .offset(y = (-29).dp)
+            )
+        }
 
         SearchBoxArriba(
             tipo = tipo,
@@ -304,17 +338,21 @@ fun MapPickerScreen(
             predictions = predictions,
             isSearching = isSearching,
             onTextChange = {
+                modoMapa = false
                 searchText = it
                 errorMessage = ""
             },
             onClear = {
+                modoMapa = false
                 searchText = ""
                 predictions = emptyList()
                 selectedLocation = null
                 selectedAddress = ""
                 locationSelected = false
+                errorMessage = ""
             },
             onPredictionClick = { prediction ->
+                modoMapa = false
                 isSearching = true
                 errorMessage = ""
 
@@ -382,6 +420,7 @@ fun MapPickerScreen(
                     return@IconButton
                 }
 
+                modoMapa = false
                 isSearching = true
                 errorMessage = ""
 
@@ -510,6 +549,64 @@ fun MapPickerScreen(
                     shape = RoundedCornerShape(16.dp)
                 )
 
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(
+                            if (modoMapa) Color(0xFFEAF1FF) else Color(0xFFF7F7F7)
+                        )
+                        .clickable {
+                            modoMapa = true
+                            predictions = emptyList()
+                            errorMessage = ""
+                            isSearching = true
+
+                            val center = cameraPositionState.position.target
+
+                            selectedLocation = center
+                            locationSelected = true
+
+                            scope.launch {
+                                if (estaDentroDePeru(center.latitude, center.longitude)) {
+                                    selectedAddress = obtenerDireccionDesdeCoordenadas(
+                                        context = context,
+                                        lat = center.latitude,
+                                        lng = center.longitude
+                                    )
+
+                                    searchText = selectedAddress
+                                    errorMessage = ""
+                                } else {
+                                    selectedAddress = ""
+                                    searchText = ""
+                                    errorMessage = "Solo puedes seleccionar ubicaciones dentro del Perú"
+                                }
+
+                                isSearching = false
+                            }
+                        }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MyLocation,
+                        contentDescription = null,
+                        tint = Color(0xFF1A4FBF)
+                    )
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Text(
+                        text = "Señalar ubicación en el mapa",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF1A1A1A)
+                    )
+                }
+
                 if (isSearching) {
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -541,25 +638,14 @@ fun MapPickerScreen(
                             return@Button
                         }
 
-                        if (!estaDentroDePeru(
-                                location.latitude,
-                                location.longitude
-                            )
-                        ) {
+                        if (!estaDentroDePeru(location.latitude, location.longitude)) {
                             errorMessage = "Solo puedes confirmar ubicaciones dentro del Perú"
                             return@Button
                         }
 
                         navController.previousBackStackEntry
                             ?.savedStateHandle
-                            ?.set(
-                                "${tipo}_address",
-                                if (selectedAddress.isBlank() || selectedAddress == "Moviendo mapa...") {
-                                    "Ubicación seleccionada"
-                                } else {
-                                    selectedAddress
-                                }
-                            )
+                            ?.set("${tipo}_address", selectedAddress)
 
                         navController.previousBackStackEntry
                             ?.savedStateHandle
@@ -574,7 +660,12 @@ fun MapPickerScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp),
-                    enabled = !isMoving && !isSearching && errorMessage.isBlank() && locationSelected && selectedLocation != null,
+                    enabled = !isMoving &&
+                            !isSearching &&
+                            errorMessage.isBlank() &&
+                            locationSelected &&
+                            selectedLocation != null &&
+                            selectedAddress.isNotBlank(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF1A1A1A),
                         contentColor = Color.White,
@@ -734,31 +825,34 @@ private suspend fun obtenerDireccionDesdeCoordenadas(
             return@withContext "Ubicación fuera del Perú"
         }
 
+        val lugarCercano = obtenerLugarCercanoConPlaces(context, lat, lng)
+
+        if (!lugarCercano.isNullOrBlank() && !esPlusCode(lugarCercano)) {
+            return@withContext lugarCercano
+        }
+
         val geocoder = Geocoder(context, Locale("es", "PE"))
         val addresses = geocoder.getFromLocation(lat, lng, 1)
 
         if (!addresses.isNullOrEmpty()) {
             val item = addresses[0]
-            val address = limpiarDireccion(item.getAddressLine(0))
 
-            if (address != "Ubicación seleccionada" && !esPlusCode(address)) {
-                address
-            } else {
-                listOfNotNull(
-                    item.thoroughfare,
-                    item.subThoroughfare,
-                    item.subLocality,
-                    item.locality,
-                    item.adminArea,
-                    "Perú"
-                )
-                    .joinToString(", ")
-                    .ifBlank { "Ubicación seleccionada" }
-            }
+            val nombreLimpio = listOfNotNull(
+                item.featureName,
+                item.thoroughfare,
+                item.subLocality,
+                item.locality
+            )
+                .filter { it.isNotBlank() }
+                .filter { !esPlusCode(it) }
+                .distinct()
+                .joinToString(", ")
+
+            nombreLimpio.ifBlank { "Ubicación seleccionada" }
         } else {
             "Ubicación seleccionada"
         }
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         "Ubicación seleccionada"
     }
 }
@@ -779,4 +873,92 @@ private fun bitmapDescriptorFromDrawableSafe(
     drawable.draw(canvas)
 
     return BitmapDescriptorFactory.fromBitmap(bitmap)
+}
+
+private suspend fun obtenerLugarCercanoConPlaces(
+    context: android.content.Context,
+    lat: Double,
+    lng: Double
+): String? = withContext(Dispatchers.IO) {
+    try {
+        val appInfo = context.packageManager.getApplicationInfo(
+            context.packageName,
+            PackageManager.GET_META_DATA
+        )
+
+        val apiKey = appInfo.metaData.getString("com.google.android.geo.API_KEY") ?: ""
+        if (apiKey.isBlank()) return@withContext null
+
+        val url = java.net.URL("https://places.googleapis.com/v1/places:searchNearby")
+        val connection = url.openConnection() as java.net.HttpURLConnection
+
+        val body = """
+            {
+              "maxResultCount": 5,
+              "rankPreference": "DISTANCE",
+              "locationRestriction": {
+                "circle": {
+                  "center": {
+                    "latitude": $lat,
+                    "longitude": $lng
+                  },
+                  "radius": 80.0
+                }
+              },
+              "languageCode": "es"
+            }
+        """.trimIndent()
+
+        connection.requestMethod = "POST"
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.setRequestProperty("X-Goog-Api-Key", apiKey)
+        connection.setRequestProperty(
+            "X-Goog-FieldMask",
+            "places.displayName,places.formattedAddress,places.types,places.location"
+        )
+        connection.doOutput = true
+
+        connection.outputStream.use {
+            it.write(body.toByteArray(Charsets.UTF_8))
+        }
+
+        val responseCode = connection.responseCode
+
+        val response = if (responseCode in 200..299) {
+            connection.inputStream.bufferedReader().use { it.readText() }
+        } else {
+            connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+        }
+
+        if (responseCode !in 200..299) {
+            android.util.Log.e("PLACES_NEARBY", response)
+            return@withContext null
+        }
+
+        val json = org.json.JSONObject(response)
+        val places = json.optJSONArray("places") ?: return@withContext null
+
+        for (i in 0 until places.length()) {
+            val place = places.getJSONObject(i)
+
+            val name = place
+                .optJSONObject("displayName")
+                ?.optString("text")
+                ?.trim()
+                .orEmpty()
+
+            if (
+                name.isNotBlank() &&
+                !esPlusCode(name) &&
+                !name.contains("Unnamed", ignoreCase = true)
+            ) {
+                return@withContext name
+            }
+        }
+
+        null
+    } catch (e: Exception) {
+        android.util.Log.e("PLACES_NEARBY", "Error buscando lugar cercano", e)
+        null
+    }
 }

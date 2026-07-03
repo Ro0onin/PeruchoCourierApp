@@ -1,5 +1,7 @@
 package com.example.peruchocourierapp.screens
 
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -33,6 +35,7 @@ import androidx.navigation.NavController
 import com.example.peruchocourierapp.R
 import com.example.peruchocourierapp.SessionManager
 import com.example.peruchocourierapp.api.RetrofitClient
+import com.example.peruchocourierapp.models.ActiveOrderResponse
 import com.example.peruchocourierapp.models.DriverDashboardResponse
 import retrofit2.Call
 import retrofit2.Callback
@@ -173,7 +176,11 @@ fun DriverLobbyScreen(navController: NavController) {
                 iconColor = RedCard,
                 modifier = Modifier.weight(1f)
             ) {
-                navController.navigate("pedido_en_curso/${Uri.encode(driverEmail)}")
+                abrirPedidoActivoConNavegacion(
+                    context = context,
+                    navController = navController,
+                    driverEmail = driverEmail
+                )
             }
         }
 
@@ -290,6 +297,79 @@ fun DriverLobbyScreen(navController: NavController) {
     }
 }
 
+private fun abrirPedidoActivoConNavegacion(
+    context: Context,
+    navController: NavController,
+    driverEmail: String
+) {
+    if (driverEmail.isBlank()) return
+
+    RetrofitClient.instance.getActiveOrder(driverEmail)
+        .enqueue(object : Callback<ActiveOrderResponse> {
+            override fun onResponse(
+                call: Call<ActiveOrderResponse>,
+                response: Response<ActiveOrderResponse>
+            ) {
+                val result = response.body()
+                val order = result?.order
+
+                if (response.isSuccessful && result?.success == true && order != null) {
+                    val estado = normalizarEstadoLobby(order.estado)
+
+                    val latLng = when (estado) {
+                        "asignado", "recogiendo", "recogido" -> {
+                            val lat = order.pickup_lat?.toDoubleOrNull()
+                            val lng = order.pickup_lng?.toDoubleOrNull()
+                            if (lat != null && lng != null) Pair(lat, lng) else null
+                        }
+
+                        "en_camino", "en_transito" -> {
+                            val lat = order.dropoff_lat?.toDoubleOrNull()
+                            val lng = order.dropoff_lng?.toDoubleOrNull()
+                            if (lat != null && lng != null) Pair(lat, lng) else null
+                        }
+
+                        else -> null
+                    }
+
+                    if (latLng != null) {
+                        abrirNavegacion(context, latLng.first, latLng.second)
+                    }
+                }
+
+                navController.navigate("pedido_en_curso/${Uri.encode(driverEmail)}")
+            }
+
+            override fun onFailure(call: Call<ActiveOrderResponse>, t: Throwable) {
+                navController.navigate("pedido_en_curso/${Uri.encode(driverEmail)}")
+            }
+        })
+}
+
+private fun abrirNavegacion(
+    context: Context,
+    lat: Double,
+    lng: Double
+) {
+    val uri = Uri.parse("geo:$lat,$lng?q=$lat,$lng")
+    val intent = Intent(Intent.ACTION_VIEW, uri)
+
+    val chooser = Intent.createChooser(
+        intent,
+        "Abrir con"
+    )
+
+    context.startActivity(chooser)
+}
+
+private fun normalizarEstadoLobby(estado: String?): String {
+    return when ((estado ?: "").trim().lowercase()) {
+        "recogiendo" -> "recogido"
+        "en_transito" -> "en_camino"
+        else -> (estado ?: "").trim().lowercase()
+    }
+}
+
 @Composable
 private fun DriverStat(
     number: String,
@@ -328,7 +408,7 @@ private fun DriverCard(
     subtitle: String,
     icon: ImageVector,
     modifier: Modifier,
-    iconColor: Color = Color(0xFF1E4FC7), // Azul por defecto
+    iconColor: Color = Color(0xFF1E4FC7),
     badge: String? = null,
     onClick: () -> Unit
 ) {

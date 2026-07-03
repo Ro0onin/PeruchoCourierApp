@@ -30,13 +30,27 @@ interface ApiService {
     @Multipart
     @POST("register.php")
     fun registerUser(
+
         @Part("name") name: RequestBody,
+
         @Part("dni") dni: RequestBody,
+
+        @Part("dni_direccion") dniDireccion: RequestBody,
+
+        @Part("dni_provincia") dniProvincia: RequestBody,
+
         @Part("email") email: RequestBody,
+
         @Part("phone") phone: RequestBody,
+
         @Part("password") password: RequestBody,
+
         @Part dniFront: MultipartBody.Part,
-        @Part dniBack: MultipartBody.Part
+
+        @Part dniBack: MultipartBody.Part,
+
+        @Part selfie: MultipartBody.Part
+
     ): Call<RegisterResponse>
 
     @FormUrlEncoded
@@ -303,6 +317,15 @@ interface ApiService {
     fun getOrderCallContacts(
         @Query("order_id") orderId: Int
     ): Call<CallContactsResponse>
+
+    @Multipart
+    @POST("send_chat_photo.php")
+    fun sendChatPhoto(
+        @Part("order_id") orderId: RequestBody,
+        @Part("sender_email") senderEmail: RequestBody,
+        @Part("receiver_email") receiverEmail: RequestBody,
+        @Part fotoChat: MultipartBody.Part
+    ): Call<BasicResponse>
 
 
 }
