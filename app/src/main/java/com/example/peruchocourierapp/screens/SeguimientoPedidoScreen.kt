@@ -1,12 +1,14 @@
 package com.example.peruchocourierapp.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeliveryDining
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.*
@@ -25,9 +27,11 @@ import com.example.peruchocourierapp.api.RetrofitClient
 import com.example.peruchocourierapp.models.ActiveOrderResponse
 import com.example.peruchocourierapp.models.DriverLocationResponse
 import com.example.peruchocourierapp.models.Order
-import com.example.peruchocourierapp.utils.obtenerRuta
+import com.example.peruchocourierapp.theme.ThemeManager
+import com.example.peruchocourierapp.utils.obtenerRutaCompleta
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.maps.android.compose.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -44,10 +48,81 @@ private val TrackBorder = Color(0xFFE8ECF4)
 private val TrackGreen = Color(0xFF22C55E)
 private val TrackRed = Color(0xFFE02020)
 
+private data class SeguimientoColors(
+    val sheetBg: Color,
+    val cardBg: Color,
+    val chipBg: Color,
+    val text: Color,
+    val muted: Color,
+    val border: Color,
+    val mapButtonBg: Color,
+    val errorBg: Color,
+    val assignedBg: Color,
+    val pickedBg: Color,
+    val onWayBg: Color,
+    val deliveredBg: Color,
+    val pendingBg: Color,
+    val assignedText: Color,
+    val pickedText: Color,
+    val onWayText: Color,
+    val deliveredText: Color,
+    val pendingText: Color
+)
+
+@Composable
+private fun seguimientoColors(): SeguimientoColors {
+    val dark = ThemeManager.isDarkMode.value
+
+    return if (dark) {
+        SeguimientoColors(
+            sheetBg = Color(0xFF0F172A).copy(alpha = 0.98f),
+            cardBg = Color(0xFF111827),
+            chipBg = Color(0xFF1F2937),
+            text = Color(0xFFF8FAFC),
+            muted = Color(0xFFCBD5E1),
+            border = Color(0xFF334155),
+            mapButtonBg = Color(0xFF111827).copy(alpha = 0.95f),
+            errorBg = Color(0xFF450A0A),
+            assignedBg = Color(0xFF172554),
+            pickedBg = Color(0xFF451A03),
+            onWayBg = Color(0xFF172554),
+            deliveredBg = Color(0xFF14532D),
+            pendingBg = Color(0xFF451A03),
+            assignedText = Color(0xFF93C5FD),
+            pickedText = Color(0xFFFBBF24),
+            onWayText = Color(0xFF93C5FD),
+            deliveredText = Color(0xFFDCFCE7),
+            pendingText = Color(0xFFFBBF24)
+        )
+    } else {
+        SeguimientoColors(
+            sheetBg = TrackBg.copy(alpha = 0.98f),
+            cardBg = Color.White,
+            chipBg = Color.White,
+            text = TrackText,
+            muted = TrackMuted,
+            border = TrackBorder,
+            mapButtonBg = Color.White.copy(alpha = 0.95f),
+            errorBg = Color(0xFFFFF0F0),
+            assignedBg = Color(0xFFD1FAE5),
+            pickedBg = Color(0xFFFFF4E8),
+            onWayBg = Color(0xFFE8EFFE),
+            deliveredBg = Color(0xFFD1FAE5),
+            pendingBg = Color(0xFFFFF4E8),
+            assignedText = Color(0xFF065F46),
+            pickedText = Color(0xFFD97706),
+            onWayText = TrackBlue,
+            deliveredText = Color(0xFF059669),
+            pendingText = Color(0xFFD97706)
+        )
+    }
+}
+
 @Composable
 fun SeguimientoPedidoScreen(navController: NavController) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val sessionManager = SessionManager(context)
+    val colors = seguimientoColors()
 
     var activeOrder by remember { mutableStateOf<Order?>(null) }
     var errorMessage by remember { mutableStateOf("") }
@@ -57,6 +132,7 @@ fun SeguimientoPedidoScreen(navController: NavController) {
     var driverLng by remember { mutableDoubleStateOf(0.0) }
     var currentStatus by remember { mutableStateOf("") }
     var ruta by remember { mutableStateOf<List<LatLng>>(emptyList()) }
+    var duracionMin by remember { mutableStateOf(0) }
 
     val cameraPositionState = rememberCameraPositionState()
 
@@ -147,23 +223,29 @@ fun SeguimientoPedidoScreen(navController: NavController) {
             "asignado" -> {
                 if (pickupLat != null && pickupLng != null) "$pickupLat,$pickupLng" else null
             }
+
             "recogido", "en_camino" -> {
                 if (dropLat != null && dropLng != null) "$dropLat,$dropLng" else null
             }
+
             else -> {
                 if (dropLat != null && dropLng != null) "$dropLat,$dropLng" else null
             }
         }
 
-        ruta = if (origin != null && destination != null) {
-            withContext(Dispatchers.IO) {
-                obtenerRuta(
+        if (origin != null && destination != null) {
+            val resultado = withContext(Dispatchers.IO) {
+                obtenerRutaCompleta(
                     origin = origin,
                     destination = destination
                 )
             }
+
+            ruta = resultado.puntos
+            duracionMin = resultado.duracionMin
         } else {
-            emptyList()
+            ruta = emptyList()
+            duracionMin = 0
         }
     }
 
@@ -236,6 +318,7 @@ fun SeguimientoPedidoScreen(navController: NavController) {
                 )
             }
 
+
             val fallbackPoints = when {
                 driverPoint != null && estadoActual == "asignado" && pickupPoint != null -> {
                     listOf(driverPoint, pickupPoint)
@@ -250,6 +333,25 @@ fun SeguimientoPedidoScreen(navController: NavController) {
                 }
 
                 else -> emptyList()
+            }
+            MapEffect(
+                ThemeManager.isDarkMode.value
+            ) { map ->
+
+                if (ThemeManager.isDarkMode.value) {
+
+                    map.setMapStyle(
+                        MapStyleOptions.loadRawResourceStyle(
+                            context,
+                            com.example.peruchocourierapp.R.raw.map_style_dark
+                        )
+                    )
+
+                } else {
+
+                    map.setMapStyle(null)
+
+                }
             }
 
             if (ruta.isNotEmpty()) {
@@ -273,7 +375,7 @@ fun SeguimientoPedidoScreen(navController: NavController) {
                 .padding(16.dp)
                 .size(52.dp)
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.95f))
+                .background(colors.mapButtonBg)
                 .align(Alignment.TopStart)
         ) {
             Icon(
@@ -295,7 +397,7 @@ fun SeguimientoPedidoScreen(navController: NavController) {
                 .padding(16.dp)
                 .size(52.dp)
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.95f))
+                .background(colors.mapButtonBg)
                 .align(Alignment.TopEnd)
         ) {
             Icon(
@@ -313,7 +415,7 @@ fun SeguimientoPedidoScreen(navController: NavController) {
                 .padding(horizontal = 8.dp),
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             colors = CardDefaults.cardColors(
-                containerColor = TrackBg.copy(alpha = 0.98f)
+                containerColor = colors.sheetBg
             )
         ) {
             Column(
@@ -334,17 +436,18 @@ fun SeguimientoPedidoScreen(navController: NavController) {
 
                     Text(
                         text = "Seguimiento del pedido",
-                        color = TrackText,
+                        color = colors.text,
                         fontSize = 21.sp,
                         fontWeight = FontWeight.Black
                     )
+
                 }
 
                 when {
                     isLoading -> {
                         Text(
                             text = "Cargando...",
-                            color = TrackMuted,
+                            color = colors.muted,
                             fontSize = 16.sp
                         )
                     }
@@ -359,34 +462,31 @@ fun SeguimientoPedidoScreen(navController: NavController) {
                     }
 
                     activeOrder != null -> {
+
+
                         RouteInfoRowSeguimiento(
+                            colors = colors,
                             text = activeOrder?.pickup_address ?: "-",
                             markerColor = TrackGreen
                         )
 
                         RouteInfoRowSeguimiento(
+                            colors = colors,
                             text = activeOrder?.dropoff_address ?: "-",
                             markerColor = TrackRed
                         )
 
                         InfoPanelSeguimiento(
+                            colors = colors,
                             metodoPago = activeOrder?.metodo_pago ?: "-",
                             distancia = activeOrder?.distancia_km ?: "-",
-                            total = activeOrder?.total ?: "-"
+                            total = activeOrder?.total ?: "-",
+                            duracionMin = duracionMin
                         )
 
-                        EstadoSeguimientoBadge(currentStatus)
+                        EstadoSeguimientoBadge(currentStatus, colors)
 
-                        Text(
-                            text = if (driverPoint != null) {
-                                "Seguimiento en vivo activo"
-                            } else {
-                                "Esperando ubicación del repartidor"
-                            },
-                            color = if (driverPoint != null) TrackBlue else TrackMuted,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+
                     }
                 }
             }
@@ -394,8 +494,10 @@ fun SeguimientoPedidoScreen(navController: NavController) {
     }
 }
 
+
 @Composable
 private fun RouteInfoRowSeguimiento(
+    colors: SeguimientoColors,
     text: String,
     markerColor: Color
 ) {
@@ -416,7 +518,7 @@ private fun RouteInfoRowSeguimiento(
 
         Text(
             text = text,
-            color = TrackText,
+            color = colors.text,
             fontSize = 14.sp,
             fontWeight = FontWeight.ExtraBold,
             lineHeight = 19.sp,
@@ -429,92 +531,107 @@ private fun RouteInfoRowSeguimiento(
 
 @Composable
 private fun InfoPanelSeguimiento(
+    colors: SeguimientoColors,
     metodoPago: String,
     distancia: String,
-    total: String
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.White, RoundedCornerShape(14.dp))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        InfoRowSeguimiento("Método de pago", metodoPago, TrackBlue)
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(TrackBorder)
-        )
-
-        InfoRowSeguimiento("Distancia", "$distancia km", TrackBlue)
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(TrackBorder)
-        )
-
-        InfoRowSeguimiento("Total", "S/ $total", TrackText)
-    }
-}
-
-@Composable
-private fun InfoRowSeguimiento(
-    leftLabel: String,
-    rightValue: String,
-    valueColor: Color
+    total: String,
+    duracionMin: Int
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(
-            text = leftLabel,
-            color = TrackMuted,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
+        MiniInfoSeguimiento(
+            colors = colors,
+            label = "Pago",
+            value = metodoPago,
             modifier = Modifier.weight(1f)
         )
 
-        Text(
-            text = rightValue,
-            color = valueColor,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Black
+        MiniInfoSeguimiento(
+            colors = colors,
+            label = "Distancia",
+            value = "$distancia km",
+            modifier = Modifier.weight(1f)
+        )
+
+        MiniInfoSeguimiento(
+            colors = colors,
+            label = "Total",
+            value = "S/ $total",
+            modifier = Modifier.weight(1f)
+        )
+
+        MiniInfoSeguimiento(
+            colors = colors,
+            label = "Tiempo",
+            value = if (duracionMin > 0) "$duracionMin min" else "--",
+            modifier = Modifier.weight(1f)
         )
     }
 }
 
 @Composable
-private fun EstadoSeguimientoBadge(status: String) {
+private fun MiniInfoSeguimiento(
+    colors: SeguimientoColors,
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .background(colors.chipBg, RoundedCornerShape(16.dp))
+            .padding(horizontal = 10.dp, vertical = 13.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = label,
+            color = colors.muted,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Black,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Spacer(modifier = Modifier.height(7.dp))
+
+        Text(
+            text = value,
+            color = TrackBlue,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Black,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun EstadoSeguimientoBadge(status: String, colors: SeguimientoColors) {
     val estado = normalizarEstadoSeguimiento(status)
 
     val badgeColor = when (estado) {
-        "asignado" -> Color(0xFFD1FAE5)
-        "recogido" -> Color(0xFFFFF4E8)
-        "en_camino" -> Color(0xFFE8EFFE)
-        "entregado" -> Color(0xFFD1FAE5)
-        "pendiente_pago" -> Color(0xFFFFF4E8)
-        else -> Color(0xFFE8EFFE)
+        "asignado" -> colors.assignedBg
+        "recogido" -> colors.pickedBg
+        "en_camino" -> colors.onWayBg
+        "entregado" -> colors.deliveredBg
+        "pendiente_pago" -> colors.pendingBg
+        else -> colors.onWayBg
     }
 
     val textColor = when (estado) {
-        "asignado" -> Color(0xFF065F46)
-        "recogido" -> Color(0xFFD97706)
-        "en_camino" -> TrackBlue
-        "entregado" -> Color(0xFF059669)
-        "pendiente_pago" -> Color(0xFFD97706)
-        else -> TrackBlue
+        "asignado" -> colors.assignedText
+        "recogido" -> colors.pickedText
+        "en_camino" -> colors.onWayText
+        "entregado" -> colors.deliveredText
+        "pendiente_pago" -> colors.pendingText
+        else -> colors.onWayText
     }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = "ESTADO:",
-            color = TrackMuted,
+            color = colors.muted,
             fontSize = 12.sp,
             fontWeight = FontWeight.Black
         )
@@ -550,7 +667,7 @@ private fun textoEstadoSeguimiento(status: String): String {
         "buscando" -> "Buscando repartidor"
         "asignado" -> "Repartidor asignado"
         "recogido" -> "Pedido recogido"
-        "en_camino" -> "En camino"
+        "en_camino" -> "En camino a entrega"
         "entregado" -> "Entregado"
         "pendiente_pago" -> "Pendiente de pago"
         else -> status.ifBlank { "Sin estado" }

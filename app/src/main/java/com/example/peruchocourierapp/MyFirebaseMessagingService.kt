@@ -21,16 +21,80 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         super.onMessageReceived(message)
 
         val title = message.data["title"] ?: "Perucho Courier"
-        val body = message.data["body"] ?: "Tienes un nuevo mensaje"
-
+        val body = message.data["body"] ?: "Tienes una nueva notificación"
+        val type = message.data["type"] ?: "chat"
         val orderId = message.data["order_id"] ?: "0"
         val senderEmail = message.data["sender_email"] ?: ""
 
-        showNotification(
-            title = title,
-            body = body,
-            orderId = orderId,
-            senderEmail = senderEmail
+        if (type == "driver_near") {
+            showArrivalNotification(
+                title = title,
+                body = body,
+                orderId = orderId
+            )
+        } else {
+            showNotification(
+                title = title,
+                body = body,
+                orderId = orderId,
+                senderEmail = senderEmail
+            )
+        }
+    }
+    private fun showArrivalNotification(
+        title: String,
+        body: String,
+        orderId: String
+    ) {
+        val channelId = "arrival_notifications"
+
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("open_tracking", true)
+            putExtra("order_id", orderId)
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            orderId.toIntOrNull() ?: 1001,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notificationManager = getSystemService(NotificationManager::class.java)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Llegada del repartidor",
+                NotificationManager.IMPORTANCE_HIGH
+            )
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.drawable.cuarta_notificacion)
+            .setContentTitle("🛵 $title")
+            .setContentText(body)
+            .setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText("📍 $body\nToca para ver el seguimiento en vivo.")
+            )
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setContentIntent(pendingIntent)
+            .addAction(
+                R.drawable.cuarta_notificacion,
+                "Ver mapa",
+                pendingIntent
+            )
+            .build()
+
+        notificationManager.notify(
+            "driver_near_$orderId".hashCode(),
+            notification
         )
     }
 

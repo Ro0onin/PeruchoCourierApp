@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -47,11 +48,61 @@ private val BlueDark = Color(0xFF0D3280)
 private val BluePrimary = Color(0xFF1A4FBF)
 private val BlueMid = Color(0xFF2D6BE4)
 private val RedPrimary = Color(0xFFE02020)
-private val GrayBg = Color(0xFFF4F6FB)
-private val GrayBorder = Color(0xFFE8ECF4)
-private val GrayText = Color(0xFF6B7A99)
-private val GrayPlaceholder = Color(0xFFB0BAD0)
-private val DarkText = Color(0xFF1A2340)
+
+private data class GoogleProfileColors(
+    val screenBg: Color,
+    val cardBg: Color,
+    val fieldBg: Color,
+    val border: Color,
+    val text: Color,
+    val muted: Color,
+    val placeholder: Color,
+    val disabledText: Color,
+    val uploadSelectedBg: Color,
+    val uploadDefaultBg: Color,
+    val errorBg: Color,
+    val errorText: Color,
+    val shadowColor: Color
+)
+
+@Composable
+private fun googleProfileColors(): GoogleProfileColors {
+    val dark = isSystemInDarkTheme() || MaterialTheme.colorScheme.background.red < 0.2f
+
+    return if (dark) {
+        GoogleProfileColors(
+            screenBg = Color(0xFF0F172A),
+            cardBg = Color(0xFF111827),
+            fieldBg = Color(0xFF1F2937),
+            border = Color(0xFF334155),
+            text = Color(0xFFF8FAFC),
+            muted = Color(0xFFCBD5E1),
+            placeholder = Color(0xFF94A3B8),
+            disabledText = Color(0xFF94A3B8),
+            uploadSelectedBg = Color(0xFF172554),
+            uploadDefaultBg = Color(0xFF111827),
+            errorBg = Color(0xFF3F1717),
+            errorText = Color(0xFFFFB4B4),
+            shadowColor = Color.Black.copy(alpha = 0.35f)
+        )
+    } else {
+        GoogleProfileColors(
+            screenBg = Color.White,
+            cardBg = Color.White,
+            fieldBg = Color(0xFFF4F6FB),
+            border = Color(0xFFE8ECF4),
+            text = Color(0xFF1A2340),
+            muted = Color(0xFF6B7A99),
+            placeholder = Color(0xFFB0BAD0),
+            disabledText = Color(0xFF6B7A99),
+            uploadSelectedBg = Color(0xFFE8EFFE),
+            uploadDefaultBg = Color.White,
+            errorBg = Color(0xFFFFEEEE),
+            errorText = RedPrimary,
+            shadowColor = Color.Black.copy(alpha = 0.12f)
+        )
+    }
+}
 
 @Composable
 fun CompletarPerfilGoogleScreen(
@@ -59,6 +110,7 @@ fun CompletarPerfilGoogleScreen(
     emailParam: String
 ) {
     val context = LocalContext.current
+    val colors = googleProfileColors()
 
     var dni by remember { mutableStateOf("") }
     var telefono by remember { mutableStateOf("") }
@@ -102,7 +154,7 @@ fun CompletarPerfilGoogleScreen(
                 "$partName.jpg",
                 requestBody
             )
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
@@ -110,7 +162,7 @@ fun CompletarPerfilGoogleScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(colors.screenBg)
             .navigationBarsPadding()
             .imePadding()
             .verticalScroll(rememberScrollState())
@@ -140,12 +192,13 @@ fun CompletarPerfilGoogleScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .background(colors.screenBg)
                 .padding(horizontal = 22.dp, vertical = 26.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 text = "Completa tu perfil",
-                color = DarkText,
+                color = colors.text,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.ExtraBold,
                 modifier = Modifier.fillMaxWidth()
@@ -153,7 +206,7 @@ fun CompletarPerfilGoogleScreen(
 
             Text(
                 text = "Necesitamos estos datos para activar tu cuenta",
-                color = GrayText,
+                color = colors.muted,
                 fontSize = 13.sp,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -167,6 +220,7 @@ fun CompletarPerfilGoogleScreen(
                 placeholder = "",
                 keyboardType = KeyboardType.Email,
                 enabled = false,
+                colors = colors,
                 leadingIcon = {
                     Icon(Icons.Outlined.CheckCircle, null, tint = BluePrimary)
                 }
@@ -184,8 +238,9 @@ fun CompletarPerfilGoogleScreen(
                 },
                 placeholder = "Ingresa tu DNI",
                 keyboardType = KeyboardType.Number,
+                colors = colors,
                 leadingIcon = {
-                    Icon(Icons.Outlined.Badge, null, tint = GrayPlaceholder)
+                    Icon(Icons.Outlined.Badge, null, tint = colors.placeholder)
                 }
             )
 
@@ -201,8 +256,9 @@ fun CompletarPerfilGoogleScreen(
                 },
                 placeholder = "Ingresa tu celular",
                 keyboardType = KeyboardType.Phone,
+                colors = colors,
                 leadingIcon = {
-                    Icon(Icons.Outlined.Phone, null, tint = GrayPlaceholder)
+                    Icon(Icons.Outlined.Phone, null, tint = colors.placeholder)
                 }
             )
 
@@ -214,8 +270,9 @@ fun CompletarPerfilGoogleScreen(
                 onValueChange = { direccion = it },
                 placeholder = "Dirección según DNI",
                 keyboardType = KeyboardType.Text,
+                colors = colors,
                 leadingIcon = {
-                    Icon(Icons.Outlined.Home, null, tint = GrayPlaceholder)
+                    Icon(Icons.Outlined.Home, null, tint = colors.placeholder)
                 }
             )
 
@@ -227,8 +284,9 @@ fun CompletarPerfilGoogleScreen(
                 onValueChange = { provincia = it },
                 placeholder = "Provincia según DNI",
                 keyboardType = KeyboardType.Text,
+                colors = colors,
                 leadingIcon = {
-                    Icon(Icons.Outlined.Home, null, tint = GrayPlaceholder)
+                    Icon(Icons.Outlined.Home, null, tint = colors.placeholder)
                 }
             )
 
@@ -237,6 +295,7 @@ fun CompletarPerfilGoogleScreen(
             UploadButton(
                 text = if (dniFrontUri == null) "Subir DNI frontal" else "DNI frontal cargado",
                 selected = dniFrontUri != null,
+                colors = colors,
                 onClick = { frontLauncher.launch("image/*") }
             )
 
@@ -245,17 +304,25 @@ fun CompletarPerfilGoogleScreen(
             UploadButton(
                 text = if (dniBackUri == null) "Subir DNI reverso" else "DNI reverso cargado",
                 selected = dniBackUri != null,
+                colors = colors,
                 onClick = { backLauncher.launch("image/*") }
             )
 
             if (errorMessage.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(14.dp))
-                Text(
-                    text = errorMessage,
-                    color = RedPrimary,
-                    fontSize = 13.sp,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = colors.errorBg,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = errorMessage,
+                        color = colors.errorText,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(22.dp))
@@ -269,6 +336,10 @@ fun CompletarPerfilGoogleScreen(
 
                         telefono.length != 9 -> {
                             errorMessage = "El celular debe tener exactamente 9 dígitos"
+                        }
+
+                        !telefono.startsWith("9") -> {
+                            errorMessage = "El celular debe iniciar con 9"
                         }
 
                         direccion.trim().isEmpty() -> {
@@ -344,10 +415,21 @@ fun CompletarPerfilGoogleScreen(
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = RedPrimary,
-                    contentColor = Color.White
+                    contentColor = Color.White,
+                    disabledContainerColor = RedPrimary.copy(alpha = 0.45f),
+                    disabledContentColor = Color.White.copy(alpha = 0.85f)
                 ),
                 enabled = !isLoading
             ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+
                 Text(
                     text = if (isLoading) "Guardando..." else "Completar perfil",
                     fontSize = 15.sp,
@@ -365,13 +447,14 @@ private fun GoogleProfileTextField(
     onValueChange: (String) -> Unit,
     placeholder: String,
     keyboardType: KeyboardType,
+    colors: GoogleProfileColors,
     enabled: Boolean = true,
     leadingIcon: @Composable (() -> Unit)? = null
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = label.uppercase(),
-            color = GrayText,
+            color = colors.muted,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.5.sp
@@ -392,26 +475,29 @@ private fun GoogleProfileTextField(
             placeholder = {
                 Text(
                     text = placeholder,
-                    color = GrayPlaceholder,
+                    color = colors.placeholder,
                     fontSize = 14.sp
                 )
             },
             textStyle = TextStyle(
-                color = DarkText,
+                color = colors.text,
                 fontSize = 14.sp
             ),
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
             colors = TextFieldDefaults.colors(
-                focusedContainerColor = GrayBg,
-                unfocusedContainerColor = GrayBg,
-                disabledContainerColor = GrayBg,
-                focusedIndicatorColor = GrayBorder,
-                unfocusedIndicatorColor = GrayBorder,
-                disabledIndicatorColor = GrayBorder,
+                focusedContainerColor = colors.fieldBg,
+                unfocusedContainerColor = colors.fieldBg,
+                disabledContainerColor = colors.fieldBg,
+                focusedIndicatorColor = colors.border,
+                unfocusedIndicatorColor = colors.border,
+                disabledIndicatorColor = colors.border,
                 cursorColor = BluePrimary,
-                focusedTextColor = DarkText,
-                unfocusedTextColor = DarkText,
-                disabledTextColor = GrayText
+                focusedTextColor = colors.text,
+                unfocusedTextColor = colors.text,
+                disabledTextColor = colors.disabledText,
+                focusedPlaceholderColor = colors.placeholder,
+                unfocusedPlaceholderColor = colors.placeholder,
+                disabledPlaceholderColor = colors.placeholder
             )
         )
     }
@@ -421,6 +507,7 @@ private fun GoogleProfileTextField(
 private fun UploadButton(
     text: String,
     selected: Boolean,
+    colors: GoogleProfileColors,
     onClick: () -> Unit
 ) {
     OutlinedButton(
@@ -431,11 +518,11 @@ private fun UploadButton(
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(
             2.dp,
-            if (selected) BluePrimary else GrayBorder
+            if (selected) BluePrimary else colors.border
         ),
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = if (selected) Color(0xFFE8EFFE) else Color.White,
-            contentColor = if (selected) BluePrimary else DarkText
+            containerColor = if (selected) colors.uploadSelectedBg else colors.uploadDefaultBg,
+            contentColor = if (selected) BluePrimary else colors.text
         )
     ) {
         Icon(Icons.Outlined.UploadFile, null)

@@ -21,6 +21,7 @@ import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
 import com.example.peruchocourierapp.screens.*
+import com.example.peruchocourierapp.theme.ThemeManager
 import com.example.peruchocourierapp.ui.theme.*
 import com.google.firebase.messaging.FirebaseMessaging
 
@@ -83,6 +84,9 @@ class MainActivity : ComponentActivity() {
             navController = navController,
             startDestination = startDestination
         ) {
+            composable("welcome") {
+                WelcomeScreen(navController)
+            }
             composable("login") {
                 LoginScreen(navController)
             }
@@ -252,13 +256,20 @@ class MainActivity : ComponentActivity() {
             Log.e("MAPS_API_KEY", "Error obteniendo API Key", e)
         }
 
+        ThemeManager.load(this)
+
         setContent {
-            PeruchoCourierAppTheme {
+            val dark = ThemeManager.isDarkMode.value
+
+            PeruchoCourierAppTheme(
+                darkTheme = dark
+            ) {
                 AppNavigation()
             }
         }
     }
-}
+    }
+
 
 @Composable
 fun HomeScreen(navController: NavHostController) {

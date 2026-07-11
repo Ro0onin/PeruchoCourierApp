@@ -1,6 +1,7 @@
 package com.example.peruchocourierapp.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -22,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.compose.ui.platform.LocalContext
 import com.example.peruchocourierapp.SessionManager
+import com.example.peruchocourierapp.theme.ThemeManager
 
 private val Blue = Color(0xFF1A4FBF)
 private val BlueDark = Color(0xFF0D3280)
@@ -36,10 +38,66 @@ private val Dark = Color(0xFF1A2340)
 private val YellowBg = Color(0xFFFEF3C7)
 private val YellowText = Color(0xFF92400E)
 
+private data class PerfilRepartidorColors(
+    val background: Color,
+    val card: Color,
+    val fieldBg: Color,
+    val border: Color,
+    val text: Color,
+    val muted: Color,
+    val lightText: Color,
+    val blueLight: Color,
+    val tagLockedBg: Color,
+    val warningBg: Color,
+    val warningText: Color,
+    val warningIcon: Color,
+    val logoutBorder: Color
+)
+
+@Composable
+private fun perfilRepartidorColors(): PerfilRepartidorColors {
+    val dark = ThemeManager.isDarkMode.value
+
+    return if (dark) {
+        PerfilRepartidorColors(
+            background = Color(0xFF0F172A),
+            card = Color(0xFF111827),
+            fieldBg = Color(0xFF1F2937),
+            border = Color(0xFF334155),
+            text = Color(0xFFF8FAFC),
+            muted = Color(0xFFCBD5E1),
+            lightText = Color(0xFF94A3B8),
+            blueLight = Color(0xFF172554),
+            tagLockedBg = Color(0xFF334155),
+            warningBg = Color(0xFF451A03),
+            warningText = Color(0xFFFDE68A),
+            warningIcon = Color(0xFFFBBF24),
+            logoutBorder = Color(0xFF7F1D1D)
+        )
+    } else {
+        PerfilRepartidorColors(
+            background = GrayBg,
+            card = Color.White,
+            fieldBg = GrayBg,
+            border = GrayBorder,
+            text = Dark,
+            muted = GrayText,
+            lightText = GrayLight,
+            blueLight = BlueLight,
+            tagLockedBg = GrayBorder,
+            warningBg = YellowBg,
+            warningText = YellowText,
+            warningIcon = Color(0xFFD97706),
+            logoutBorder = GrayBorder
+        )
+    }
+}
+
 @Composable
 fun PerfilRepartidorScreen(navController: NavController) {
     val context = LocalContext.current
     val sessionManager = SessionManager(context)
+    val colors = perfilRepartidorColors()
 
     val name = sessionManager.getUserName() ?: "Repartidor"
     val email = sessionManager.getUserEmail() ?: "-"
@@ -56,7 +114,7 @@ fun PerfilRepartidorScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(GrayBg)
+            .background(colors.background)
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
     ) {
@@ -64,7 +122,21 @@ fun PerfilRepartidorScreen(navController: NavController) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(155.dp)
-                .background(Brush.linearGradient(listOf(BlueDark, Blue, BlueMid)))
+                .background(
+                    if (ThemeManager.isDarkMode.value) {
+                        Brush.linearGradient(
+                            listOf(
+                                Color(0xFF020617),
+                                Color(0xFF0F172A),
+                                Color(0xFF1E293B)
+                            )
+                        )
+                    } else {
+                        Brush.linearGradient(
+                            listOf(BlueDark, Blue, BlueMid)
+                        )
+                    }
+                )
                 .statusBarsPadding()
                 .padding(horizontal = 18.dp, vertical = 14.dp)
         ) {
@@ -120,7 +192,7 @@ fun PerfilRepartidorScreen(navController: NavController) {
         ) {
             Text(
                 text = name,
-                color = Dark,
+                color = colors.text,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Black,
                 modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -143,7 +215,7 @@ fun PerfilRepartidorScreen(navController: NavController) {
 
                 Text(
                     text = "Repartidor",
-                    color = GrayText,
+                    color = colors.muted,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -152,29 +224,31 @@ fun PerfilRepartidorScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(18.dp))
 
             ProfileSectionRepartidor(
+                colors = colors,
                 title = "Información personal",
                 icon = Icons.Outlined.Person
             ) {
-                LockedProfileFieldRepartidor("Nombre completo", name, Icons.Outlined.Person)
-                LockedProfileFieldRepartidor("DNI / Documento", dni, Icons.Outlined.Badge)
-                LockedProfileFieldRepartidor("Correo electrónico", email, Icons.Outlined.Email)
-                LockedProfileFieldRepartidor("Teléfono", phone, Icons.Outlined.Phone)
+                LockedProfileFieldRepartidor(colors, "Nombre completo", name, Icons.Outlined.Person)
+                LockedProfileFieldRepartidor(colors, "DNI / Documento", dni, Icons.Outlined.Badge)
+                LockedProfileFieldRepartidor(colors, "Correo electrónico", email, Icons.Outlined.Email)
+                LockedProfileFieldRepartidor(colors, "Teléfono", phone, Icons.Outlined.Phone)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
             ProfileSectionRepartidor(
+                colors = colors,
                 title = "Operación",
                 icon = Icons.Outlined.LocalShipping
             ) {
-                InfoRowRepartidor("Cuenta", "Repartidor")
-                InfoRowRepartidor("Pedidos activos", "Revisar pedido en curso")
-                InfoRowRepartidor("Historial", "Disponible en Mis entregas")
+                InfoRowRepartidor(colors, "Cuenta", "Repartidor")
+                InfoRowRepartidor(colors, "Pedidos activos", "Revisar pedido en curso")
+                InfoRowRepartidor(colors, "Historial", "Disponible en Mis entregas")
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            WarningBoxRepartidor()
+            WarningBoxRepartidor(colors)
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -191,8 +265,10 @@ fun PerfilRepartidorScreen(navController: NavController) {
                     .fillMaxWidth()
                     .height(55.dp),
                 shape = RoundedCornerShape(15.dp),
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, colors.logoutBorder),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = Red
+                    contentColor = Red,
+                    containerColor = colors.card
                 )
             ) {
                 Icon(
@@ -214,7 +290,7 @@ fun PerfilRepartidorScreen(navController: NavController) {
 
             Text(
                 text = "PERFIL DE REPARTIDOR",
-                color = GrayLight,
+                color = colors.lightText,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 1.sp,
@@ -226,6 +302,7 @@ fun PerfilRepartidorScreen(navController: NavController) {
 
 @Composable
 private fun ProfileSectionRepartidor(
+    colors: PerfilRepartidorColors,
     title: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     content: @Composable ColumnScope.() -> Unit
@@ -233,8 +310,8 @@ private fun ProfileSectionRepartidor(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = androidx.compose.foundation.BorderStroke(1.dp, GrayBorder)
+        colors = CardDefaults.cardColors(containerColor = colors.card),
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.border)
     ) {
         Column(modifier = Modifier.padding(15.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -242,7 +319,7 @@ private fun ProfileSectionRepartidor(
                     modifier = Modifier
                         .size(34.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(BlueLight),
+                        .background(colors.blueLight),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -257,7 +334,7 @@ private fun ProfileSectionRepartidor(
 
                 Text(
                     text = title.uppercase(),
-                    color = Dark,
+                    color = colors.text,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Black,
                     letterSpacing = 0.6.sp
@@ -272,13 +349,14 @@ private fun ProfileSectionRepartidor(
 
 @Composable
 private fun LockedProfileFieldRepartidor(
+    colors: PerfilRepartidorColors,
     label: String,
     value: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
     Text(
         text = label.uppercase(),
-        color = GrayText,
+        color = colors.muted,
         fontSize = 10.sp,
         fontWeight = FontWeight.Black,
         letterSpacing = 0.5.sp
@@ -290,14 +368,14 @@ private fun LockedProfileFieldRepartidor(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(13.dp))
-            .background(GrayBg)
+            .background(colors.fieldBg)
             .padding(horizontal = 13.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = GrayLight,
+            tint = colors.lightText,
             modifier = Modifier.size(21.dp)
         )
 
@@ -305,7 +383,7 @@ private fun LockedProfileFieldRepartidor(
 
         Text(
             text = value,
-            color = Dark,
+            color = colors.text,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
@@ -313,7 +391,7 @@ private fun LockedProfileFieldRepartidor(
             modifier = Modifier.weight(1f)
         )
 
-        ProfileTagRepartidor("Fijo", true)
+        ProfileTagRepartidor(colors, "Fijo", true)
     }
 
     Spacer(modifier = Modifier.height(12.dp))
@@ -321,13 +399,14 @@ private fun LockedProfileFieldRepartidor(
 
 @Composable
 private fun ProfileTagRepartidor(
+    colors: PerfilRepartidorColors,
     text: String,
     locked: Boolean
 ) {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(7.dp))
-            .background(if (locked) GrayBorder else BlueLight)
+            .background(if (locked) colors.tagLockedBg else colors.blueLight)
             .padding(horizontal = 8.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -335,7 +414,7 @@ private fun ProfileTagRepartidor(
             Icon(
                 imageVector = Icons.Outlined.Lock,
                 contentDescription = null,
-                tint = GrayText,
+                tint = colors.muted,
                 modifier = Modifier.size(11.dp)
             )
 
@@ -344,7 +423,7 @@ private fun ProfileTagRepartidor(
 
         Text(
             text = text,
-            color = if (locked) GrayText else Blue,
+            color = if (locked) colors.muted else Blue,
             fontSize = 10.sp,
             fontWeight = FontWeight.Black
         )
@@ -352,19 +431,21 @@ private fun ProfileTagRepartidor(
 }
 
 @Composable
-private fun WarningBoxRepartidor() {
+private fun WarningBoxRepartidor(
+    colors: PerfilRepartidorColors
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(13.dp))
-            .background(YellowBg)
+            .background(colors.warningBg)
             .padding(13.dp),
         verticalAlignment = Alignment.Top
     ) {
         Icon(
             imageVector = Icons.Outlined.Info,
             contentDescription = null,
-            tint = Color(0xFFD97706),
+            tint = colors.warningIcon,
             modifier = Modifier.size(20.dp)
         )
 
@@ -372,7 +453,7 @@ private fun WarningBoxRepartidor() {
 
         Text(
             text = "Para cambiar tus datos personales, solicítalo con administración por WhatsApp.",
-            color = YellowText,
+            color = colors.warningText,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
             lineHeight = 17.sp
@@ -382,6 +463,7 @@ private fun WarningBoxRepartidor() {
 
 @Composable
 private fun InfoRowRepartidor(
+    colors: PerfilRepartidorColors,
     label: String,
     value: String
 ) {
@@ -393,7 +475,7 @@ private fun InfoRowRepartidor(
     ) {
         Text(
             text = label,
-            color = GrayText,
+            color = colors.muted,
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.weight(1f)
@@ -401,7 +483,7 @@ private fun InfoRowRepartidor(
 
         Text(
             text = value,
-            color = Dark,
+            color = colors.text,
             fontSize = 13.sp,
             fontWeight = FontWeight.Black
         )

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.DeliveryDining
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,14 +41,12 @@ import com.example.peruchocourierapp.models.DriverDashboardResponse
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-
-private val Background = Color.White
-private val CardBg = Color.White
-private val CardBorder = Color(0xFFEAEAEA)
-private val TextDark = Color(0xFF1A1A1A)
-private val TextMuted = Color(0xFF7A7A7A)
-private val TextSoft = Color(0xFF9A9A9A)
-
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.ui.draw.scale
+import com.example.peruchocourierapp.theme.ThemeManager
 private val RedCard = Color(0xFFFF1C24)
 private val Red = Color(0xFFE02020)
 private val Green = Color(0xFF22C55E)
@@ -57,6 +56,13 @@ private val Blue = Color(0xFF1E4FC7)
 fun DriverLobbyScreen(navController: NavController) {
     val context = LocalContext.current
     val sessionManager = SessionManager(context)
+
+    val background = MaterialTheme.colorScheme.background
+    val cardBg = MaterialTheme.colorScheme.surface
+    val cardBorder = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+    val textDark = MaterialTheme.colorScheme.onBackground
+    val textMuted = MaterialTheme.colorScheme.onSurfaceVariant
+    val textSoft = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
 
     val userName = sessionManager.getUserName()?.takeIf { it.isNotBlank() } ?: "Usuario"
     val driverEmail = sessionManager.getUserEmail()?.trim().orEmpty()
@@ -94,7 +100,7 @@ fun DriverLobbyScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Background)
+            .background(background)
             .statusBarsPadding()
             .navigationBarsPadding()
             .padding(horizontal = 20.dp)
@@ -135,24 +141,33 @@ fun DriverLobbyScreen(navController: NavController) {
 
         Text(
             text = "Hola de nuevo",
-            color = TextMuted,
+            color = textMuted,
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium
         )
 
-        Text(
-            text = userName,
-            color = TextDark,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Black
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
+            Text(
+                text = userName,
+                color = textDark,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier.weight(1f)
+            )
+
+            DriverThemeToggle()
+        }
 
         Spacer(modifier = Modifier.height(18.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            DriverStat(activos, "Activos", Modifier.weight(1f), Color(0xFF579DFF))
-            DriverStat(disponibles, "Disponibles", Modifier.weight(1f), Color(0xFFFF6B7A))
-            DriverStat(entregados, "Entregados", Modifier.weight(1f), Green)
+            DriverStat(activos, "Activos", Modifier.weight(1f), Color(0xFF579DFF), cardBg, cardBorder, textMuted)
+            DriverStat(disponibles, "Disponibles", Modifier.weight(1f), Color(0xFFFF6B7A), cardBg, cardBorder, textMuted)
+            DriverStat(entregados, "Entregados", Modifier.weight(1f), Green, cardBg, cardBorder, textMuted)
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -164,7 +179,11 @@ fun DriverLobbyScreen(navController: NavController) {
                 icon = Icons.Outlined.Inbox,
                 iconColor = Blue,
                 modifier = Modifier.weight(1f),
-                badge = if (disponibles != "0") disponibles else null
+                badge = if (disponibles != "0") disponibles else null,
+                cardBg = cardBg,
+                cardBorder = cardBorder,
+                textDark = textDark,
+                textMuted = textMuted
             ) {
                 navController.navigate("pedidos_disponibles")
             }
@@ -174,7 +193,11 @@ fun DriverLobbyScreen(navController: NavController) {
                 subtitle = "Ver en curso",
                 icon = Icons.Outlined.DeliveryDining,
                 iconColor = RedCard,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                cardBg = cardBg,
+                cardBorder = cardBorder,
+                textDark = textDark,
+                textMuted = textMuted
             ) {
                 abrirPedidoActivoConNavegacion(
                     context = context,
@@ -192,7 +215,11 @@ fun DriverLobbyScreen(navController: NavController) {
                 subtitle = "Historial",
                 icon = Icons.Outlined.Assignment,
                 iconColor = Blue,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                cardBg = cardBg,
+                cardBorder = cardBorder,
+                textDark = textDark,
+                textMuted = textMuted
             ) {
                 navController.navigate("mis_entregas")
             }
@@ -202,7 +229,11 @@ fun DriverLobbyScreen(navController: NavController) {
                 subtitle = "Datos",
                 icon = Icons.Outlined.AccountCircle,
                 iconColor = Blue,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                cardBg = cardBg,
+                cardBorder = cardBorder,
+                textDark = textDark,
+                textMuted = textMuted
             ) {
                 navController.navigate("perfil_repartidor")
             }
@@ -215,15 +246,15 @@ fun DriverLobbyScreen(navController: NavController) {
                 .fillMaxWidth()
                 .height(90.dp)
                 .clip(RoundedCornerShape(24.dp))
-                .background(CardBg)
-                .border(1.dp, CardBorder, RoundedCornerShape(24.dp))
+                .background(cardBg)
+                .border(1.dp, cardBorder, RoundedCornerShape(24.dp))
                 .padding(horizontal = 18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Ganancias hoy",
-                    color = TextMuted,
+                    color = textMuted,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -237,7 +268,7 @@ fun DriverLobbyScreen(navController: NavController) {
 
                 Text(
                     text = "$entregasHoy entrega${if (entregasHoy == "1") "" else "s"}",
-                    color = TextSoft,
+                    color = textSoft,
                     fontSize = 12.sp
                 )
             }
@@ -255,8 +286,8 @@ fun DriverLobbyScreen(navController: NavController) {
                 .fillMaxWidth()
                 .height(56.dp)
                 .clip(RoundedCornerShape(18.dp))
-                .background(CardBg)
-                .border(1.dp, CardBorder, RoundedCornerShape(18.dp))
+                .background(cardBg)
+                .border(1.dp, cardBorder, RoundedCornerShape(18.dp))
                 .clickable {
                     sessionManager.clearSession()
                     navController.navigate("login") {
@@ -287,7 +318,7 @@ fun DriverLobbyScreen(navController: NavController) {
 
         Text(
             text = "HOME REPARTIDOR",
-            color = Color(0xFFD0D5E2),
+            color = textSoft,
             fontWeight = FontWeight.Black,
             textAlign = TextAlign.Center,
             modifier = Modifier
@@ -375,14 +406,17 @@ private fun DriverStat(
     number: String,
     label: String,
     modifier: Modifier,
-    numberColor: Color
+    numberColor: Color,
+    cardBg: Color,
+    cardBorder: Color,
+    textMuted: Color
 ) {
     Column(
         modifier = modifier
             .height(62.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(CardBg)
-            .border(1.dp, CardBorder, RoundedCornerShape(14.dp))
+            .background(cardBg)
+            .border(1.dp, cardBorder, RoundedCornerShape(14.dp))
             .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -395,7 +429,7 @@ private fun DriverStat(
 
         Text(
             text = label,
-            color = TextMuted,
+            color = textMuted,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold
         )
@@ -410,14 +444,18 @@ private fun DriverCard(
     modifier: Modifier,
     iconColor: Color = Color(0xFF1E4FC7),
     badge: String? = null,
+    cardBg: Color,
+    cardBorder: Color,
+    textDark: Color,
+    textMuted: Color,
     onClick: () -> Unit
 ) {
     Box(
         modifier = modifier
             .height(142.dp)
             .clip(RoundedCornerShape(24.dp))
-            .background(CardBg)
-            .border(1.dp, CardBorder, RoundedCornerShape(24.dp))
+            .background(cardBg)
+            .border(1.dp, cardBorder, RoundedCornerShape(24.dp))
             .clickable { onClick() }
             .padding(16.dp)
     ) {
@@ -435,7 +473,7 @@ private fun DriverCard(
             Column {
                 Text(
                     text = title,
-                    color = TextDark,
+                    color = textDark,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Black,
                     lineHeight = 16.sp
@@ -445,7 +483,7 @@ private fun DriverCard(
 
                 Text(
                     text = subtitle,
-                    color = TextMuted,
+                    color = textMuted,
                     fontSize = 13.sp
                 )
             }
@@ -480,5 +518,52 @@ private fun getInitials(name: String): String {
         parts.size >= 2 -> "${parts[0].first()}${parts[1].first()}".uppercase()
         parts.size == 1 -> parts[0].take(2).uppercase()
         else -> "US"
+    }
+}
+@Composable
+private fun DriverThemeToggle() {
+
+    val context = LocalContext.current
+    val dark = ThemeManager.isDarkMode.value
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+
+        Icon(
+            imageVector = Icons.Outlined.LightMode,
+            contentDescription = null,
+            tint = if (!dark)
+                Color(0xFFFFD54F)
+            else
+                MaterialTheme.colorScheme.onBackground.copy(alpha = 0.40f),
+            modifier = Modifier.size(18.dp)
+        )
+
+        Switch(
+            checked = dark,
+            onCheckedChange = {
+                ThemeManager.setDark(context, it)
+            },
+            modifier = Modifier.scale(0.78f),
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = Color(0xFF1E40AF),
+                uncheckedThumbColor = Color.White,
+                uncheckedTrackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                checkedBorderColor = Color.Transparent,
+                uncheckedBorderColor = Color.Transparent
+            )
+        )
+
+        Icon(
+            imageVector = Icons.Outlined.DarkMode,
+            contentDescription = null,
+            tint = if (dark)
+                Color(0xFF93C5FD)
+            else
+                MaterialTheme.colorScheme.onBackground.copy(alpha = 0.40f),
+            modifier = Modifier.size(18.dp)
+        )
     }
 }

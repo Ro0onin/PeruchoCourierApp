@@ -1,6 +1,6 @@
 package com.example.peruchocourierapp.screens
 
-
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,7 +23,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,6 +41,12 @@ fun DriverHomeScreen(navController: NavController) {
 
     val context = LocalContext.current
     val sessionManager = SessionManager(context)
+
+    val backgroundColor = MaterialTheme.colorScheme.background
+    val cardColor = MaterialTheme.colorScheme.surface
+    val textColor = MaterialTheme.colorScheme.onBackground
+    val cardTextColor = MaterialTheme.colorScheme.onSurface
+    val errorColor = MaterialTheme.colorScheme.error
 
     var orders by remember { mutableStateOf<List<Order>>(emptyList()) }
     var errorMessage by remember { mutableStateOf("") }
@@ -132,20 +139,25 @@ fun DriverHomeScreen(navController: NavController) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
+            .background(backgroundColor)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
             Text(
                 text = "Pedidos disponibles",
-                fontSize = 28.sp
+                fontSize = 28.sp,
+                color = textColor
             )
         }
 
         when {
             isLoading -> {
                 item {
-                    Text("Cargando pedidos...")
+                    Text(
+                        text = "Cargando pedidos...",
+                        color = textColor
+                    )
                 }
             }
 
@@ -153,41 +165,49 @@ fun DriverHomeScreen(navController: NavController) {
                 item {
                     Text(
                         text = errorMessage,
-                        color = Color.Red
+                        color = errorColor
                     )
                 }
             }
 
             orders.isEmpty() -> {
                 item {
-                    Text("No hay pedidos nacionales disponibles")
+                    Text(
+                        text = "No hay pedidos nacionales disponibles",
+                        color = textColor
+                    )
                 }
             }
 
             else -> {
                 items(orders) { order ->
                     Card(
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = cardColor,
+                            contentColor = cardTextColor
+                        )
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp)
                         ) {
                             Text(
                                 text = "Pedido #${order.id ?: 0}",
-                                fontSize = 18.sp
+                                fontSize = 18.sp,
+                                color = cardTextColor
                             )
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            Text("Cliente: ${order.user_email ?: "-"}")
-                            Text("Recojo: ${order.pickup_address ?: order.origen ?: "-"}")
-                            Text("Entrega: ${order.dropoff_address ?: order.destino ?: "-"}")
-                            Text("Descripción: ${order.descripcion ?: "-"}")
-                            Text("Distancia: ${order.distancia_km ?: "-"} km")
-                            Text("Tamaño: ${order.tamano_paquete ?: "-"}")
-                            Text("Método de pago: ${order.metodo_pago ?: "-"}")
-                            Text("Total: S/ ${order.total ?: "-"}")
-                            Text("Estado: ${order.estado ?: "-"}")
+                            Text("Cliente: ${order.user_email ?: "-"}", color = cardTextColor)
+                            Text("Recojo: ${order.pickup_address ?: order.origen ?: "-"}", color = cardTextColor)
+                            Text("Entrega: ${order.dropoff_address ?: order.destino ?: "-"}", color = cardTextColor)
+                            Text("Descripción: ${order.descripcion ?: "-"}", color = cardTextColor)
+                            Text("Distancia: ${order.distancia_km ?: "-"} km", color = cardTextColor)
+                            Text("Tamaño: ${order.tamano_paquete ?: "-"}", color = cardTextColor)
+                            Text("Método de pago: ${order.metodo_pago ?: "-"}", color = cardTextColor)
+                            Text("Total: S/ ${order.total ?: "-"}", color = cardTextColor)
+                            Text("Estado: ${order.estado ?: "-"}", color = cardTextColor)
 
                             Spacer(modifier = Modifier.height(12.dp))
 
@@ -197,7 +217,7 @@ fun DriverHomeScreen(navController: NavController) {
                                 enabled = acceptingOrderId != order.id
                             ) {
                                 Text(
-                                    if (acceptingOrderId == order.id) {
+                                    text = if (acceptingOrderId == order.id) {
                                         "Aceptando..."
                                     } else {
                                         "Aceptar pedido"

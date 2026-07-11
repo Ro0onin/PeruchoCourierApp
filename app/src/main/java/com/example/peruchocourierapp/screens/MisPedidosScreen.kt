@@ -2,8 +2,11 @@ package com.example.peruchocourierapp.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -17,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.ArrowForwardIos
 import androidx.compose.material.icons.outlined.Call
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.CreditCard
@@ -24,7 +28,6 @@ import androidx.compose.material.icons.outlined.HeadsetMic
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.LocationOn
-import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.Route
@@ -51,16 +54,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -73,33 +83,98 @@ import com.example.peruchocourierapp.api.RetrofitClient
 import com.example.peruchocourierapp.models.BasicResponse
 import com.example.peruchocourierapp.models.GetOrdersResponse
 import com.example.peruchocourierapp.models.Order
+import com.example.peruchocourierapp.theme.ThemeManager
+import kotlinx.coroutines.launch
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import kotlinx.coroutines.launch
 import java.text.Normalizer
-import androidx.compose.runtime.rememberCoroutineScope
-private val PcBlue = Color(0xFF1A4FBF)
-private val PcBlueDark = Color(0xFF0B2E78)
-private val PcBlueMid = Color(0xFF2D6BE4)
-private val PcBlueLight = Color(0xFFEAF2FF)
-private val PcRed = Color(0xFFFF1C24)
-private val PcRedSoft = Color(0xFFFFE8EA)
-private val Bg = Color(0xFFF5F7FB)
-private val CardBorder = Color(0xFFE7ECF5)
-private val Dark = Color(0xFF111827)
-private val Muted = Color(0xFF667294)
-private val SoftText = Color(0xFFA0A8BC)
-private val SuccessBg = Color(0xFFD1FAE5)
-private val SuccessText = Color(0xFF067647)
+
+private val PcInk = Color(0xFF111A33)
+private val PcMuted = Color(0xFF6B7590)
+private val PcLine = Color(0xFFE7E9F1)
+private val PcRed = Color(0xFFE42328)
+private val PcRedDark = Color(0xFFB81419)
+private val PcRedSoft = Color(0xFFFDECEC)
+private val PcBlue = Color(0xFF1E4FD8)
+private val PcBlueTint = Color(0xFFEAF0FE)
+private val PcGreen = Color(0xFF12805A)
+private val PcGreenTint = Color(0xFFE5F6EE)
+private val Bg = Color(0xFFF4F5F9)
 private val WarningBg = Color(0xFFFFF3CD)
 private val WarningText = Color(0xFF856404)
 private val DangerBg = Color(0xFFFEE2E2)
 private val DangerText = Color(0xFF991B1B)
 
+private val InterFont = FontFamily.SansSerif
+
+private data class MisPedidosColors(
+    val bg: Color,
+    val card: Color,
+    val ink: Color,
+    val muted: Color,
+    val line: Color,
+    val textSoft: Color,
+    val placeholder: Color,
+    val blueTint: Color,
+    val greenTint: Color,
+    val dangerBg: Color,
+    val dangerText: Color,
+    val warningBg: Color,
+    val warningText: Color,
+    val sheetBg: Color,
+    val watermark: Color
+)
+
+@Composable
+private fun misPedidosColors(): MisPedidosColors {
+    val dark = ThemeManager.isDarkMode.value
+
+    return if (dark) {
+        MisPedidosColors(
+            bg = Color(0xFF0F172A),
+            card = Color(0xFF111827),
+            ink = Color(0xFFF8FAFC),
+            muted = Color(0xFFCBD5E1),
+            line = Color(0xFF334155),
+            textSoft = Color(0xFFE2E8F0),
+            placeholder = Color(0xFF94A3B8),
+            blueTint = Color(0xFF172554),
+            greenTint = Color(0xFF14532D),
+            dangerBg = Color(0xFF3F1717),
+            dangerText = Color(0xFFFFB4B4),
+            warningBg = Color(0xFF422006),
+            warningText = Color(0xFFFDE68A),
+            sheetBg = Color(0xFF0F172A),
+            watermark = Color.White.copy(alpha = 0.035f)
+        )
+    } else {
+        MisPedidosColors(
+            bg = Bg,
+            card = Color.White,
+            ink = PcInk,
+            muted = PcMuted,
+            line = PcLine,
+            textSoft = Color(0xFF3A4260),
+            placeholder = Color(0xFFC3CADD),
+            blueTint = PcBlueTint,
+            greenTint = PcGreenTint,
+            dangerBg = DangerBg,
+            dangerText = DangerText,
+            warningBg = WarningBg,
+            warningText = WarningText,
+            sheetBg = Bg,
+            watermark = PcInk.copy(alpha = 0.035f)
+        )
+    }
+}
+
+private val MonoFont = FontFamily.Monospace
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MisPedidosScreen(navController: NavController) {
+    val colors = misPedidosColors()
     val context = LocalContext.current
     val sessionManager = SessionManager(context)
 
@@ -155,13 +230,23 @@ fun MisPedidosScreen(navController: NavController) {
         "Nacionales" -> orders.filter { it.tipo_envio == "nacional" || it.tipo_envio.isNullOrBlank() }
         "Internacionales" -> orders.filter { it.tipo_envio == "internacional" }
         "Entregados" -> orders.filter { normalizarEstado(it.estado) == "entregado" }
+        "En curso" -> orders.filter {
+            normalizarEstado(it.estado) in listOf(
+                "asignado",
+                "recogiendo",
+                "recogido",
+                "en_camino",
+                "en_transito",
+                "transito"
+            )
+        }
         else -> orders
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Bg)
+            .background(colors.bg)
             .navigationBarsPadding()
     ) {
         HeaderMisPedidos(
@@ -172,66 +257,93 @@ fun MisPedidosScreen(navController: NavController) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .background(if (ThemeManager.isDarkMode.value) Color(0xFF020617) else PcInk)
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             FilterChipButton("Todos", selectedFilter) { selectedFilter = "Todos" }
             FilterChipButton("Nacionales", selectedFilter) { selectedFilter = "Nacionales" }
             FilterChipButton("Internacionales", selectedFilter) { selectedFilter = "Internacionales" }
+            FilterChipButton("En curso", selectedFilter) { selectedFilter = "En curso" }
             FilterChipButton("Entregados", selectedFilter) { selectedFilter = "Entregados" }
         }
 
-        when {
-            isLoading -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Cargando pedidos...", color = Muted, fontWeight = FontWeight.Bold)
-                }
-            }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(colors.bg)
+        ) {
+            Text(
+                text = "PERUCHO COURIER",
+                color = colors.watermark,
+                fontSize = 46.sp,
+                fontWeight = FontWeight.ExtraBold,
+                fontFamily = InterFont,
+                letterSpacing = 2.sp,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .rotate(-25f)
+            )
 
-            errorMessage.isNotBlank() -> {
-                Text(
-                    text = errorMessage,
-                    color = PcRed,
-                    modifier = Modifier.padding(18.dp),
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            filteredOrders.isEmpty() -> {
-                EmptyOrdersBox(selectedFilter = selectedFilter)
-            }
-
-            else -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    items(filteredOrders) { order ->
-                        PedidoPremiumCard(
-                            order = order,
-                            onClick = { selectedOrder = order }
+            when {
+                isLoading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Cargando pedidos...",
+                            color = colors.muted,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = InterFont
                         )
                     }
+                }
 
-                    item {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "PERUCHO COURIER",
-                            color = SoftText.copy(alpha = 0.55f),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 1.sp,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 18.dp),
-                            textAlign = TextAlign.Center
-                        )
+                errorMessage.isNotBlank() -> {
+                    Text(
+                        text = errorMessage,
+                        color = PcRed,
+                        modifier = Modifier.padding(18.dp),
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = InterFont
+                    )
+                }
+
+                filteredOrders.isEmpty() -> {
+                    EmptyOrdersBox(selectedFilter = selectedFilter)
+                }
+
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
+                        contentPadding = PaddingValues(top = 16.dp, bottom = 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        items(filteredOrders) { order ->
+                            PedidoTicketCard(
+                                order = order,
+                                onClick = { selectedOrder = order }
+                            )
+                        }
+
+                        item {
+                            Text(
+                                text = "PERUCHO COURIER",
+                                color = colors.placeholder.copy(alpha = 0.65f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black,
+                                fontFamily = InterFont,
+                                letterSpacing = 1.sp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 18.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
             }
@@ -241,7 +353,7 @@ fun MisPedidosScreen(navController: NavController) {
     if (selectedOrder != null) {
         ModalBottomSheet(
             onDismissRequest = { selectedOrder = null },
-            containerColor = Bg
+            containerColor = colors.bg
         ) {
             PedidoDetalleSheet(
                 order = selectedOrder!!,
@@ -282,7 +394,8 @@ fun MisPedidosScreen(navController: NavController) {
                 Text(
                     text = "Cancelar pedido #${pedido.id ?: 0}",
                     fontWeight = FontWeight.Black,
-                    color = Dark
+                    color = colors.ink,
+                    fontFamily = InterFont
                 )
             },
             text = {
@@ -293,18 +406,20 @@ fun MisPedidosScreen(navController: NavController) {
                         } else {
                             "Este pedido aún puede cancelarse sin penalidad."
                         },
-                        color = Muted,
+                        color = colors.muted,
                         fontSize = 14.sp,
-                        lineHeight = 19.sp
+                        lineHeight = 19.sp,
+                        fontFamily = InterFont
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
                         text = "¿Deseas continuar con la cancelación?",
-                        color = Dark,
+                        color = colors.ink,
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = InterFont
                     )
                 }
             },
@@ -373,7 +488,7 @@ fun MisPedidosScreen(navController: NavController) {
                     Text("No")
                 }
             },
-            containerColor = Color.White
+            containerColor = colors.card
         )
     }
 }
@@ -383,60 +498,71 @@ private fun HeaderMisPedidos(
     totalPedidos: Int,
     onBack: () -> Unit
 ) {
+    val colors = misPedidosColors()
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(118.dp)
-            .background(
-                Brush.linearGradient(
-                    listOf(PcBlueDark, PcBlue, PcBlueMid)
-                )
-            )
-            .statusBarsPadding()
-            .padding(horizontal = 16.dp)
+            .background(if (ThemeManager.isDarkMode.value) Color(0xFF020617) else PcInk)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .align(Alignment.Center),
-            verticalAlignment = Alignment.CenterVertically
+                .statusBarsPadding()
+                .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 18.dp)
         ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .size(50.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color.White.copy(alpha = 0.18f))
+            Row(
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Image(
-                    painter = painterResource(id = R.drawable.ic_back),
-                    contentDescription = "Volver",
-                    modifier = Modifier.size(23.dp),
-                    contentScale = ContentScale.Fit,
-                    colorFilter = ColorFilter.tint(Color.White)
-                )
-            }
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(Color.White.copy(alpha = 0.12f))
+                        .clickable { onBack() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "‹",
+                        color = Color.White,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = InterFont
+                    )
+                }
 
-            Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Mis pedidos",
-                    color = Color.White,
-                    fontSize = 23.sp,
-                    fontWeight = FontWeight.Black
-                )
+                Column {
+                    Text(
+                        text = "Mis pedidos",
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = InterFont
+                    )
 
-                Spacer(modifier = Modifier.height(3.dp))
-
-                Text(
-                    text = "$totalPedidos envío${if (totalPedidos == 1) "" else "s"} registrados",
-                    color = Color.White.copy(alpha = 0.78f),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium
-                )
+                    Text(
+                        text = "$totalPedidos envío${if (totalPedidos == 1) "" else "s"} registrados",
+                        color = Color(0xFFAEB6D4),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = InterFont
+                    )
+                }
             }
         }
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(3.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(PcRed, PcBlue)
+                    )
+                )
+        )
     }
 }
 
@@ -446,173 +572,200 @@ private fun FilterChipButton(
     selected: String,
     onClick: () -> Unit
 ) {
+    val colors = misPedidosColors()
+    val isSelected = selected == text
+
     Box(
         modifier = Modifier
-            .height(40.dp)
+            .height(38.dp)
             .clip(RoundedCornerShape(50.dp))
-            .background(if (selected == text) PcBlue else Color.White)
+            .background(if (isSelected) Color.White else Color.White.copy(alpha = 0.08f))
             .clickable { onClick() }
-            .padding(horizontal = 18.dp),
+            .padding(horizontal = 17.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
-            color = if (selected == text) Color.White else Muted,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Black
+            color = if (isSelected) PcInk else Color(0xFFC7CDE4),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = InterFont
         )
     }
 }
 
 @Composable
-private fun PedidoPremiumCard(
+private fun PedidoTicketCard(
     order: Order,
     onClick: () -> Unit
 ) {
+    val colors = misPedidosColors()
     val isNacional = order.tipo_envio == "nacional" || order.tipo_envio.isNullOrBlank()
     val estado = normalizarEstado(order.estado)
     val totalText = if (isNacional) "S/ ${order.total ?: "-"}" else "$${order.total ?: "-"}"
+    val isDelivered = estado == "entregado"
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() },
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.card),
+        border = BorderStroke(1.dp, colors.line),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Box(
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        Box(modifier = Modifier.fillMaxWidth()) {
             Image(
-                painter = painterResource(id = R.drawable.logo_perucho2),
+                painter = painterResource(R.drawable.logo_perucho2),
                 contentDescription = null,
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-                contentScale = ContentScale.Fit,
-                alpha = 0.12f
+                    .fillMaxWidth(0.85f)
+                    .align(Alignment.Center)
+                    .rotate(-18f)
+                    .alpha(0.15f),
+                contentScale = ContentScale.Fit
             )
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
+
+            Column {
+                Box {
+                    Row(
                         modifier = Modifier
-                            .size(42.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (isNacional) PcBlueLight else PcRedSoft),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, top = 15.dp, bottom = 10.dp),
+                        verticalAlignment = Alignment.Top
                     ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Pedido #${order.id ?: 0}",
+                                color = colors.ink,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = InterFont
+                            )
+
+                            Text(
+                                text = "${formatFecha(order.created_at)} · ${if (isNacional) "Nacional" else "Internacional"}",
+                                color = colors.muted,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                fontFamily = InterFont
+                            )
+                        }
+
                         Icon(
-                            imageVector = if (isNacional) Icons.Outlined.Inventory2 else Icons.Outlined.Language,
+                            imageVector = Icons.Outlined.ArrowForwardIos,
                             contentDescription = null,
-                            tint = if (isNacional) PcBlue else PcRed,
-                            modifier = Modifier.size(22.dp)
+                            tint = colors.placeholder,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Pedido #${order.id ?: 0}",
-                            color = Dark,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Black
-                        )
-
-                        Text(
-                            text = formatFecha(order.created_at),
-                            color = SoftText,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Icon(
-                        imageVector = Icons.Outlined.ArrowForwardIos,
-                        contentDescription = null,
-                        tint = SoftText,
-                        modifier = Modifier.size(16.dp)
+                    TicketStamp(
+                        estado = estado,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 12.dp, end = 18.dp)
+                            .rotate(-6f)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatusBadge(estado)
-                    TypeBadge(if (isNacional) "Nacional" else "Internacional")
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
                 if (isNacional) {
-                    RouteMiniLine(
+                    RouteTicketLine(
                         pickup = order.pickup_address ?: order.origen ?: "-",
                         dropoff = order.dropoff_address ?: order.destino ?: "-"
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Column(
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        TicketInfoRow(
+                            icon = Icons.Outlined.Inventory2,
+                            text = "${order.categoria ?: "-"} · ${order.tamano_paquete ?: "-"}"
+                        )
 
-                    InfoLine(
-                        icon = Icons.Outlined.Inventory2,
-                        text = "${order.categoria ?: "-"} · ${order.tamano_paquete ?: "-"}"
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    InfoLine(
-                        icon = Icons.Outlined.TwoWheeler,
-                        text = vehiculoLegible(order)
-                    )
+                        TicketInfoRow(
+                            icon = Icons.Outlined.TwoWheeler,
+                            text = vehiculoLegible(order)
+                        )
+                    }
                 } else {
-                    InfoLine(
-                        icon = Icons.Outlined.Language,
-                        text = "Compra en ${order.web_compra ?: "-"}"
-                    )
+                    Column(
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TicketInfoRow(
+                            icon = Icons.Outlined.Language,
+                            text = "Compra en ${order.web_compra ?: "-"}"
+                        )
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    InfoLine(
-                        icon = Icons.Outlined.QrCode2,
-                        text = "Tracking: ${order.tracking ?: "-"}"
-                    )
+                        TicketInfoRow(
+                            icon = Icons.Outlined.QrCode2,
+                            text = "Tracking: ${order.tracking ?: "-"}"
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
-                HorizontalDivider(color = CardBorder)
-                Spacer(modifier = Modifier.height(12.dp))
+                DashedDividerWithCuts()
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "TOTAL",
-                            color = SoftText,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 0.8.sp
+                            color = colors.muted,
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = InterFont,
+                            letterSpacing = 0.6.sp
                         )
 
                         Text(
                             text = totalText,
-                            color = PcBlueDark,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Black
+                            color = colors.ink,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = MonoFont
                         )
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50.dp))
-                            .background(PcBlueLight)
-                            .padding(horizontal = 12.dp, vertical = 7.dp)
-                    ) {
-                        Text(
-                            text = order.metodo_pago ?: "Pago",
-                            color = PcBlue,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Black
-                        )
+                    when (order.metodo_pago?.lowercase()) {
+
+                        "yape" -> {
+                            Image(
+                                painter = painterResource(R.drawable.ic_yape2),
+                                contentDescription = "Yape",
+                                modifier = Modifier
+                                    .height(34.dp)
+                                    .width(34.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+
+                        "plin" -> {
+                            Image(
+                                painter = painterResource(R.drawable.ic_plin),
+                                contentDescription = "Plin",
+                                modifier = Modifier
+                                    .height(34.dp)
+                                    .width(34.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+
+                        else -> {
+                            Text(
+                                text = order.metodo_pago ?: "Pago",
+                                color = PcBlue,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = InterFont
+                            )
+                        }
                     }
                 }
             }
@@ -621,69 +774,114 @@ private fun PedidoPremiumCard(
 }
 
 @Composable
-private fun RouteMiniLine(
+private fun TicketStamp(
+    estado: String,
+    modifier: Modifier = Modifier
+) {
+    val colors = misPedidosColors()
+    val color = when (estado) {
+        "entregado" -> PcGreen
+        "cancelado", "cancelado_cliente" -> PcRed
+        else -> PcBlue
+    }
+
+    Box(
+        modifier = modifier
+            .border(2.dp, color, RoundedCornerShape(6.dp))
+            .background(Color.White.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 9.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = estadoLegible(estado).uppercase(),
+            color = color,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.ExtraBold,
+            fontFamily = InterFont,
+            letterSpacing = 1.sp,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun RouteTicketLine(
     pickup: String,
     dropoff: String
 ) {
-    Column {
+    val colors = misPedidosColors()
+    Column(
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 12.dp)
+    ) {
         Row(verticalAlignment = Alignment.Top) {
-            Box(
-                modifier = Modifier
-                    .size(18.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF22C55E)),
-                contentAlignment = Alignment.Center
-            ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
                     modifier = Modifier
-                        .size(7.dp)
+                        .size(11.dp)
                         .clip(CircleShape)
-                        .background(Color.White)
+                        .border(2.dp, PcGreen, CircleShape)
+                        .background(colors.card)
+                )
+
+                Box(
+                    modifier = Modifier
+                        .width(1.5.dp)
+                        .height(28.dp)
+                        .background(colors.line)
+                        .padding(vertical = 3.dp)
                 )
             }
 
             Spacer(modifier = Modifier.width(10.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text("Recojo", color = SoftText, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                Text(
+                    text = "RECOJO",
+                    color = colors.muted,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = InterFont,
+                    letterSpacing = 0.4.sp
+                )
+
                 Text(
                     text = pickup,
-                    color = Muted,
+                    color = colors.ink,
                     fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = InterFont,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
         Row(verticalAlignment = Alignment.Top) {
             Box(
                 modifier = Modifier
-                    .size(18.dp)
+                    .size(11.dp)
                     .clip(CircleShape)
-                    .background(PcRed),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(7.dp)
-                        .clip(CircleShape)
-                        .background(Color.White)
-                )
-            }
+                    .border(2.dp, PcRed, CircleShape)
+                    .background(colors.card)
+            )
 
             Spacer(modifier = Modifier.width(10.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text("Entrega", color = SoftText, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                Text(
+                    text = "ENTREGA",
+                    color = colors.muted,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = InterFont,
+                    letterSpacing = 0.4.sp
+                )
+
                 Text(
                     text = dropoff,
-                    color = Muted,
+                    color = colors.ink,
                     fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = InterFont,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -693,25 +891,27 @@ private fun RouteMiniLine(
 }
 
 @Composable
-private fun InfoLine(
+private fun TicketInfoRow(
     icon: ImageVector,
     text: String
 ) {
+    val colors = misPedidosColors()
     Row(verticalAlignment = Alignment.Top) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             tint = PcBlue,
-            modifier = Modifier.size(19.dp)
+            modifier = Modifier.size(16.dp)
         )
 
         Spacer(modifier = Modifier.width(8.dp))
 
         Text(
             text = text,
-            color = Muted,
-            fontSize = 14.sp,
+            color = colors.textSoft,
+            fontSize = 12.5.sp,
             fontWeight = FontWeight.Medium,
+            fontFamily = InterFont,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -719,103 +919,51 @@ private fun InfoLine(
 }
 
 @Composable
-private fun StatusBadge(estado: String) {
-    val bg: Color
-    val fg: Color
-    val label: String
-
-    when (estado) {
-        "pendiente_pago" -> {
-            bg = WarningBg
-            fg = WarningText
-            label = "Pendiente pago"
-        }
-
-        "pendiente_revision" -> {
-            bg = PcBlueLight
-            fg = PcBlue
-            label = "En revisión"
-        }
-
-        "esperando_almacen" -> {
-            bg = PcBlueLight
-            fg = PcBlue
-            label = "Esperando almacén"
-        }
-
-        "en_almacen" -> {
-            bg = PcBlueLight
-            fg = PcBlue
-            label = "En almacén"
-        }
-
-        "en_transito", "asignado", "transito", "recogido", "recogiendo", "en_camino" -> {
-            bg = PcBlueLight
-            fg = PcBlue
-            label = "En tránsito"
-        }
-
-        "listo_entrega" -> {
-            bg = SuccessBg
-            fg = SuccessText
-            label = "Listo entrega"
-        }
-
-        "entregado" -> {
-            bg = SuccessBg
-            fg = SuccessText
-            label = "Entregado"
-        }
-
-        "cancelado", "cancelado_cliente" -> {
-            bg = DangerBg
-            fg = DangerText
-            label = if (estado == "cancelado_cliente") "Cancelado por cliente" else "Cancelado"
-        }
-
-        else -> {
-            bg = Bg
-            fg = Muted
-            label = estadoLegible(estado)
-        }
-    }
-
+private fun DashedDividerWithCuts() {
+    val colors = misPedidosColors()
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(50.dp))
-            .background(bg)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        contentAlignment = Alignment.Center
+            .fillMaxWidth()
+            .height(18.dp)
     ) {
-        Text(
-            text = label,
-            color = fg,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Black
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.5.dp)
+                .align(Alignment.Center)
+        ) {
+            drawLine(
+                color = colors.line,
+                start = androidx.compose.ui.geometry.Offset(0f, 0f),
+                end = androidx.compose.ui.geometry.Offset(size.width, 0f),
+                strokeWidth = 2f,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(9f, 7f), 0f)
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .size(16.dp)
+                .align(Alignment.CenterStart)
+                .offset(x = (-8).dp)
+                .clip(CircleShape)
+                .background(colors.bg)
         )
-    }
-}
 
-@Composable
-private fun TypeBadge(label: String) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50.dp))
-            .background(PcBlue)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            color = Color.White,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Black
+        Box(
+            modifier = Modifier
+                .size(16.dp)
+                .align(Alignment.CenterEnd)
+                .offset(x = 8.dp)
+                .clip(CircleShape)
+                .background(colors.bg)
         )
     }
 }
 
 @Composable
 private fun EmptyOrdersBox(selectedFilter: String) {
+    val colors = misPedidosColors()
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -825,8 +973,8 @@ private fun EmptyOrdersBox(selectedFilter: String) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+            colors = CardDefaults.cardColors(containerColor = colors.card),
+            border = BorderStroke(1.dp, colors.line)
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),
@@ -836,7 +984,7 @@ private fun EmptyOrdersBox(selectedFilter: String) {
                     modifier = Modifier
                         .size(54.dp)
                         .clip(CircleShape)
-                        .background(PcBlueLight),
+                        .background(colors.blueTint),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -851,16 +999,18 @@ private fun EmptyOrdersBox(selectedFilter: String) {
 
                 Text(
                     text = "No tienes pedidos",
-                    color = Dark,
+                    color = colors.ink,
                     fontSize = 18.sp,
-                    fontWeight = FontWeight.Black
+                    fontWeight = FontWeight.Black,
+                    fontFamily = InterFont
                 )
 
                 Text(
                     text = "No encontramos pedidos en la categoría $selectedFilter.",
-                    color = Muted,
+                    color = colors.muted,
                     fontSize = 13.sp,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    fontFamily = InterFont
                 )
             }
         }
@@ -875,6 +1025,7 @@ private fun PedidoDetalleSheet(
     onSupport: () -> Unit,
     onCancel: () -> Unit
 ) {
+    val colors = misPedidosColors()
     val context = LocalContext.current
     val isNacional = order.tipo_envio == "nacional" || order.tipo_envio.isNullOrBlank()
     val estado = normalizarEstado(order.estado)
@@ -884,7 +1035,7 @@ private fun PedidoDetalleSheet(
             .fillMaxWidth()
             .fillMaxHeight(0.92f)
             .verticalScroll(rememberScrollState())
-            .background(Bg)
+            .background(colors.bg)
             .padding(16.dp)
     ) {
         DetailHeroCard(order = order, isNacional = isNacional, estado = estado)
@@ -906,7 +1057,7 @@ private fun PedidoDetalleSheet(
                 TimelineAddress(
                     label = "Recojo",
                     value = order.pickup_address ?: order.origen ?: "-",
-                    color = Color(0xFF22C55E)
+                    color = PcGreen
                 )
 
                 TimelineAddress(
@@ -985,7 +1136,7 @@ private fun PedidoDetalleSheet(
             ) {
                 Icon(Icons.Outlined.LocationOn, null, modifier = Modifier.size(19.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Rastrear pedido", fontWeight = FontWeight.Black)
+                Text("Rastrear pedido", fontWeight = FontWeight.Black, fontFamily = InterFont)
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -1002,7 +1153,7 @@ private fun PedidoDetalleSheet(
             ) {
                 Icon(Icons.Outlined.Circle, null, modifier = Modifier.size(19.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Cancelar pedido", fontWeight = FontWeight.Black)
+                Text("Cancelar pedido", fontWeight = FontWeight.Black, fontFamily = InterFont)
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -1018,7 +1169,7 @@ private fun PedidoDetalleSheet(
         ) {
             Icon(Icons.Outlined.HeadsetMic, null, modifier = Modifier.size(19.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Contactar soporte", fontWeight = FontWeight.Black)
+            Text("Contactar soporte", fontWeight = FontWeight.Black, fontFamily = InterFont)
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -1031,21 +1182,18 @@ private fun DetailHeroCard(
     isNacional: Boolean,
     estado: String
 ) {
+    val colors = misPedidosColors()
     Card(
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
+        colors = CardDefaults.cardColors(containerColor = colors.card),
+        border = BorderStroke(1.dp, colors.line),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(PcBlueDark, PcBlue, PcBlueMid)
-                        )
-                    )
+                    .background(if (ThemeManager.isDarkMode.value) Color(0xFF020617) else PcInk)
                     .padding(18.dp)
             ) {
                 Column {
@@ -1053,7 +1201,8 @@ private fun DetailHeroCard(
                         text = "Pedido #${order.id ?: 0}",
                         color = Color.White,
                         fontSize = 24.sp,
-                        fontWeight = FontWeight.Black
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = InterFont
                     )
 
                     Spacer(modifier = Modifier.height(4.dp))
@@ -1062,7 +1211,8 @@ private fun DetailHeroCard(
                         text = formatFecha(order.created_at),
                         color = Color.White.copy(alpha = 0.78f),
                         fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = InterFont
                     )
 
                     Spacer(modifier = Modifier.height(14.dp))
@@ -1072,19 +1222,34 @@ private fun DetailHeroCard(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50.dp))
-                                .background(Color.White.copy(alpha = 0.20f))
+                                .background(Color.White.copy(alpha = 0.12f))
+                                .border(
+                                    1.dp,
+                                    Color.White.copy(alpha = 0.28f),
+                                    RoundedCornerShape(50.dp)
+                                )
                                 .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
                             Text(
                                 text = if (isNacional) "Nacional" else "Internacional",
                                 color = Color.White,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Black
+                                fontWeight = FontWeight.Black,
+                                fontFamily = InterFont
                             )
                         }
                     }
                 }
             }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(
+                        Brush.horizontalGradient(listOf(PcRed, PcBlue))
+                    )
+            )
 
             Column(modifier = Modifier.padding(14.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1155,10 +1320,11 @@ private fun MiniStat(
     value: String,
     modifier: Modifier = Modifier
 ) {
+    val colors = misPedidosColors()
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(Bg)
+            .background(colors.bg)
             .padding(10.dp)
     ) {
         Icon(
@@ -1172,17 +1338,19 @@ private fun MiniStat(
 
         Text(
             text = label.uppercase(),
-            color = Muted,
+            color = colors.muted,
             fontSize = 9.sp,
             fontWeight = FontWeight.Black,
+            fontFamily = InterFont,
             maxLines = 1
         )
 
         Text(
             text = value,
-            color = Dark,
+            color = colors.ink,
             fontSize = 14.sp,
             fontWeight = FontWeight.Black,
+            fontFamily = InterFont,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -1194,10 +1362,12 @@ private fun TrackingTimeline(
     estado: String,
     isNacional: Boolean
 ) {
+    val colors = misPedidosColors()
     val steps = if (isNacional) {
         listOf(
             "Pedido creado" to true,
             "Esperando repartidor" to (estado in listOf(
+                "pendiente_pago",
                 "esperando_repartidor",
                 "asignado",
                 "recogiendo",
@@ -1221,7 +1391,7 @@ private fun TrackingTimeline(
             "En camino" to (estado in listOf("en_camino", "entregado")),
             "Entregado" to (estado == "entregado")
         )
-    }  else {
+    } else {
         listOf(
             "Pedido internacional registrado" to true,
             "En revisión" to (estado in listOf(
@@ -1287,30 +1457,56 @@ private fun TrackingTimeline(
         steps.forEachIndexed { index, item ->
             Row(verticalAlignment = Alignment.Top) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = if (item.second) Icons.Outlined.CheckCircle else Icons.Outlined.Circle,
-                        contentDescription = null,
-                        tint = if (item.second) PcBlue else SoftText,
-                        modifier = Modifier.size(21.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clip(CircleShape)
+                            .background(
+                                when {
+                                    index == steps.lastIndex && item.second -> PcGreen
+                                    item.second -> PcInk
+                                    else -> Color.White
+                                }
+                            )
+                            .border(
+                                2.dp,
+                                when {
+                                    index == steps.lastIndex && item.second -> PcGreen
+                                    item.second -> PcInk
+                                    else -> colors.line
+                                },
+                                CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (item.second) {
+                            Icon(
+                                imageVector = Icons.Outlined.Check,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(11.dp)
+                            )
+                        }
+                    }
 
                     if (index != steps.lastIndex) {
                         Box(
                             modifier = Modifier
-                                .width(2.dp)
-                                .height(24.dp)
-                                .background(if (item.second) PcBlue else CardBorder)
+                                .width(1.5.dp)
+                                .height(28.dp)
+                                .background(if (item.second) PcBlue else colors.line)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
                 Text(
                     text = item.first,
-                    color = if (item.second) Dark else Muted,
+                    color = if (item.second) PcInk else PcMuted,
                     fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = if (index == steps.lastIndex && item.second) FontWeight.ExtraBold else FontWeight.SemiBold,
+                    fontFamily = InterFont,
                     modifier = Modifier.padding(top = 1.dp)
                 )
             }
@@ -1324,13 +1520,15 @@ private fun DetailSection(
     icon: ImageVector,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val colors = misPedidosColors()
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 12.dp),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.card),
+        border = BorderStroke(1.dp, colors.line),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1338,7 +1536,7 @@ private fun DetailSection(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(PcBlueLight),
+                        .background(colors.blueTint),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -1353,10 +1551,11 @@ private fun DetailSection(
 
                 Text(
                     text = title.uppercase(),
-                    color = Dark,
-                    fontSize = 13.sp,
+                    color = colors.muted,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Black,
-                    letterSpacing = 0.6.sp
+                    fontFamily = InterFont,
+                    letterSpacing = 0.4.sp
                 )
             }
 
@@ -1373,6 +1572,7 @@ private fun TimelineAddress(
     color: Color,
     isLast: Boolean = false
 ) {
+    val colors = misPedidosColors()
     Row(verticalAlignment = Alignment.Top) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
@@ -1386,7 +1586,7 @@ private fun TimelineAddress(
                     modifier = Modifier
                         .size(7.dp)
                         .clip(CircleShape)
-                        .background(Color.White)
+                        .background(colors.card)
                 )
             }
 
@@ -1395,7 +1595,7 @@ private fun TimelineAddress(
                     modifier = Modifier
                         .width(2.dp)
                         .height(32.dp)
-                        .background(CardBorder)
+                        .background(colors.line)
                 )
             }
         }
@@ -1405,17 +1605,19 @@ private fun TimelineAddress(
         Column(modifier = Modifier.padding(bottom = if (isLast) 0.dp else 12.dp)) {
             Text(
                 text = label.uppercase(),
-                color = Muted,
+                color = colors.muted,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Black,
+                fontFamily = InterFont,
                 letterSpacing = 0.5.sp
             )
 
             Text(
                 text = value,
-                color = Dark,
+                color = colors.ink,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
+                fontFamily = InterFont,
                 lineHeight = 18.sp
             )
         }
@@ -1424,6 +1626,7 @@ private fun TimelineAddress(
 
 @Composable
 private fun DetailGrid(items: List<Pair<String, String>>) {
+    val colors = misPedidosColors()
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items.chunked(2).forEach { rowItems ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1451,17 +1654,19 @@ private fun MiniInfoBox(
     value: String,
     modifier: Modifier = Modifier
 ) {
+    val colors = misPedidosColors()
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(Bg)
+            .background(colors.bg)
             .padding(12.dp)
     ) {
         Text(
             text = label.uppercase(),
-            color = Muted,
+            color = colors.muted,
             fontSize = 9.sp,
             fontWeight = FontWeight.Black,
+            fontFamily = InterFont,
             maxLines = 1
         )
 
@@ -1469,9 +1674,10 @@ private fun MiniInfoBox(
 
         Text(
             text = value,
-            color = Dark,
+            color = colors.ink,
             fontSize = 14.sp,
             fontWeight = FontWeight.Black,
+            fontFamily = InterFont,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -1484,6 +1690,7 @@ private fun ContactRow(
     phone: String,
     onClick: () -> Unit
 ) {
+    val colors = misPedidosColors()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1496,7 +1703,7 @@ private fun ContactRow(
             modifier = Modifier
                 .size(38.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(PcBlueLight),
+                .background(colors.blueTint),
             contentAlignment = Alignment.Center
         ) {
             Icon(Icons.Outlined.Call, null, tint = PcBlue, modifier = Modifier.size(20.dp))
@@ -1505,8 +1712,21 @@ private fun ContactRow(
         Spacer(modifier = Modifier.width(10.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(label.uppercase(), color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Black)
-            Text(phone, color = Dark, fontSize = 15.sp, fontWeight = FontWeight.Black)
+            Text(
+                label.uppercase(),
+                color = colors.muted,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = InterFont
+            )
+
+            Text(
+                phone,
+                color = colors.ink,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = InterFont
+            )
         }
     }
 }
@@ -1516,12 +1736,14 @@ private fun DetailLine(
     label: String,
     value: String
 ) {
+    val colors = misPedidosColors()
     Column(modifier = Modifier.padding(bottom = 10.dp)) {
         Text(
             text = label.uppercase(),
-            color = Muted,
+            color = colors.muted,
             fontSize = 10.sp,
             fontWeight = FontWeight.Black,
+            fontFamily = InterFont,
             letterSpacing = 0.5.sp
         )
 
@@ -1529,9 +1751,10 @@ private fun DetailLine(
 
         Text(
             text = value,
-            color = Dark,
+            color = colors.ink,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
+            fontFamily = InterFont,
             lineHeight = 18.sp
         )
     }
@@ -1539,12 +1762,74 @@ private fun DetailLine(
 
 @Composable
 private fun DetailDivider() {
+    val colors = misPedidosColors()
     HorizontalDivider(
-        color = CardBorder,
+        color = colors.line,
         modifier = Modifier.padding(vertical = 10.dp)
     )
 }
 
+@Composable
+private fun StatusBadge(estado: String) {
+    val colors = misPedidosColors()
+    val bg: Color
+    val fg: Color
+    val label: String
+
+    when (estado) {
+        "pendiente_pago" -> {
+            bg = colors.blueTint
+            fg = PcBlue
+            label = "Esperando repartidor"
+        }
+
+        "pendiente_revision", "esperando_almacen", "en_almacen" -> {
+            bg = colors.blueTint
+            fg = PcBlue
+            label = estadoLegible(estado)
+        }
+
+        "en_transito", "asignado", "transito", "recogido", "recogiendo", "en_camino" -> {
+            bg = colors.blueTint
+            fg = PcBlue
+            label = "En tránsito"
+        }
+
+        "listo_entrega", "entregado" -> {
+            bg = colors.greenTint
+            fg = PcGreen
+            label = if (estado == "entregado") "Entregado" else "Listo entrega"
+        }
+
+        "cancelado", "cancelado_cliente" -> {
+            bg = colors.dangerBg
+            fg = colors.dangerText
+            label = if (estado == "cancelado_cliente") "Cancelado por cliente" else "Cancelado"
+        }
+
+        else -> {
+            bg = colors.bg
+            fg = PcMuted
+            label = estadoLegible(estado)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50.dp))
+            .background(bg)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = fg,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Black,
+            fontFamily = InterFont
+        )
+    }
+}
 
 private fun vehiculoLegible(order: Order): String {
     val vehiculo = order.tipo_vehiculo.orEmpty().lowercase().trim()
@@ -1569,6 +1854,7 @@ private fun callPhone(
         )
     }
 }
+
 private fun normalizarEstado(estado: String?): String {
     val sinAcentos = Normalizer.normalize(estado.orEmpty(), Normalizer.Form.NFD)
         .replace("\\p{Mn}+".toRegex(), "")
@@ -1601,7 +1887,7 @@ private fun estadoLegible(estado: String?): String {
     val limpio = normalizarEstado(estado)
 
     return when (limpio) {
-        "pendiente_pago" -> "Pendiente pago"
+        "pendiente_pago" -> "Esperando repartidor"
         "pendiente_revision" -> "En revisión"
         "esperando_almacen" -> "Esperando almacén"
         "en_almacen" -> "En almacén"

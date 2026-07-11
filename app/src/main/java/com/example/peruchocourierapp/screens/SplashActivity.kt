@@ -48,7 +48,7 @@ fun SplashScreen(navController: NavController) {
 
         if (!sessionManager.isLoggedIn()) {
 
-            navController.navigate("login") {
+            navController.navigate("welcome") {
                 popUpTo("splash") { inclusive = true }
             }
 

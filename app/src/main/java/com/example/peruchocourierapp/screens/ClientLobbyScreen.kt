@@ -28,13 +28,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.example.peruchocourierapp.R
@@ -48,6 +52,12 @@ import com.google.android.libraries.places.api.net.FindCurrentPlaceRequest
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import android.os.Build
+import android.provider.Settings
+import com.example.peruchocourierapp.theme.ThemeManager
+import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.ui.draw.scale
 
 private val BrandRed = Color(0xFFE02020)
 private val BrandBlue = Color(0xFF1A4FBF)
@@ -59,6 +69,48 @@ private val Muted = Color(0xFF888888)
 private val Green = Color(0xFF22C55E)
 private val AirCardBlue = Color(0xFF0E3596)
 private val AirCardBlue2 = Color(0xFF1A4DCB)
+
+private data class ClientLobbyColors(
+    val background: Color,
+    val surface: Color,
+    val card: Color,
+    val softBg: Color,
+    val border: Color,
+    val text: Color,
+    val muted: Color,
+    val subtleText: Color,
+    val sheetSurface: Color,
+    val dialogSurface: Color,
+    val blueTint: Color,
+    val redTint: Color,
+    val greenTint: Color,
+    val warningBg: Color,
+    val arrow: Color
+)
+
+@Composable
+private fun clientLobbyColors(): ClientLobbyColors {
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+    return ClientLobbyColors(
+        background = if (isDark) Color(0xFF0F172A) else Color.White,
+        surface = if (isDark) Color(0xFF111827) else Color.White,
+        card = if (isDark) Color(0xFF1E293B) else Color.White,
+        softBg = if (isDark) Color(0xFF1F2937) else Color(0xFFF5F5F5),
+        border = if (isDark) Color(0xFF334155) else Color(0xFFEAEAEA),
+        text = if (isDark) Color(0xFFF8FAFC) else Color(0xFF1A1A1A),
+        muted = if (isDark) Color(0xFFCBD5E1) else Color(0xFF888888),
+        subtleText = if (isDark) Color(0xFF94A3B8) else Color(0xFF999999),
+        sheetSurface = if (isDark) Color(0xFF111827) else Color.White,
+        dialogSurface = if (isDark) Color(0xFF111827) else Color.White,
+        blueTint = if (isDark) Color(0xFF172554) else Color(0xFFEAF2FF),
+        redTint = if (isDark) Color(0xFF3F1518) else Color(0xFFFFEEEE),
+        greenTint = if (isDark) Color(0xFF0F2F20) else Color(0xFFE8FAF0),
+        warningBg = if (isDark) Color(0xFF3A2509) else Color(0xFFFFF7ED),
+        arrow = if (isDark) Color(0xFF64748B) else Color(0xFFDDDDDD)
+    )
+}
+
 
 data class NearbyPlaceItem(
     val title: String,
@@ -72,6 +124,7 @@ data class NearbyPlaceItem(
 @Composable
 fun ClientLobbyScreen(navController: NavController) {
     val context = LocalContext.current
+    val colors = clientLobbyColors()
     val sessionManager = SessionManager(context)
 
     val isLoggedIn = sessionManager.isLoggedIn()
@@ -88,6 +141,10 @@ fun ClientLobbyScreen(navController: NavController) {
     var verificationMessage by remember {
         mutableStateOf("Debes verificar tu identidad antes de realizar envíos")
     }
+
+    // ---- Estado de los popups de permisos personalizados ----
+    var showNotificationRationale by remember { mutableStateOf(false) }
+    var showLocationRationale by remember { mutableStateOf(false) }
 
     fun bloquearSiNoVerificado(onAllowed: () -> Unit) {
         if (!isLoggedIn) {
@@ -184,19 +241,68 @@ fun ClientLobbyScreen(navController: NavController) {
         )
     }
 
+    var hasNotificationPermission by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
+        )
+    }
+
+    // Lanzador real del permiso de ubicación (se dispara SOLO después de que el
+    // usuario confirma en nuestro popup personalizado)
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasLocationPermission = granted
+
         if (!granted) {
             isLoadingPlaces = false
             placesMessage = "Activa tu ubicación para ver lugares cercanos"
+            Toast.makeText(
+                context,
+                "Activa tu ubicación para ver lugares cercanos",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
-    LaunchedEffect(Unit) {
+    // Lanzador real del permiso de notificaciones (mismo criterio: se dispara
+    // después de la confirmación en nuestro popup)
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasNotificationPermission = granted
+
+        if (!granted) {
+            Toast.makeText(
+                context,
+                "Activa las notificaciones para recibir avisos de tus pedidos",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+
+        // Encadenamos con el popup de ubicación, igual que en el flujo original
         if (!hasLocationPermission) {
-            permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            showLocationRationale = true
+        }
+    }
+
+    // Al entrar a la pantalla, decidimos qué popup mostrar primero.
+    // (Se unificaron los dos LaunchedEffect(Unit) duplicados que había antes)
+    LaunchedEffect(Unit) {
+        when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission -> {
+                showNotificationRationale = true
+            }
+            !hasLocationPermission -> {
+                showLocationRationale = true
+            }
         }
     }
 
@@ -265,12 +371,13 @@ fun ClientLobbyScreen(navController: NavController) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(colors.background)
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             HomeTopBar(
+                colors = colors,
                 onMenuClick = { showMenu = true }
             )
 
@@ -293,6 +400,7 @@ fun ClientLobbyScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(8.dp))
 
             SearchDeliveryBar(
+                colors = colors,
                 onClick = {
                     bloquearSiNoVerificado {
                         navController.navigate("pedido_nacional")
@@ -303,6 +411,7 @@ fun ClientLobbyScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(10.dp))
 
             RecentPlacesList(
+                colors = colors,
                 places = nearbyPlaces,
                 message = placesMessage,
                 isLoading = isLoadingPlaces,
@@ -329,10 +438,11 @@ fun ClientLobbyScreen(navController: NavController) {
         if (showMenu) {
             ModalBottomSheet(
                 onDismissRequest = { showMenu = false },
-                containerColor = Color.White,
+                containerColor = colors.sheetSurface,
                 dragHandle = null
             ) {
                 DrawerMenuContent(
+                    colors = colors,
                     canCreateOrders = canCreateOrders,
                     isLoggedIn = isLoggedIn,
                     userName = userName,
@@ -389,8 +499,11 @@ fun ClientLobbyScreen(navController: NavController) {
                     onLogout = {
                         sessionManager.clearSession()
                         showMenu = false
-                        navController.navigate("client_lobby") {
-                            popUpTo("client_lobby") { inclusive = true }
+
+                        navController.navigate("welcome") {
+                            popUpTo(0) {
+                                inclusive = true
+                            }
                             launchSingleTop = true
                         }
                     },
@@ -398,11 +511,156 @@ fun ClientLobbyScreen(navController: NavController) {
                 )
             }
         }
+
+        // ---- Popups de permisos personalizados ----
+
+        if (showNotificationRationale) {
+            PermissionRationaleDialog(
+                colors = colors,
+                icon = Icons.Outlined.Notifications,
+                title = "Activa tus notificaciones",
+                description = "Te avisamos al instante cuando tu repartidor sea asignado, recoja tu paquete o esté a punto de llegar.",
+                confirmText = "Activar notificaciones",
+                onConfirm = {
+                    showNotificationRationale = false
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                },
+                onDismiss = {
+                    showNotificationRationale = false
+                    if (!hasLocationPermission) {
+                        showLocationRationale = true
+                    }
+                }
+            )
+        }
+
+        if (showLocationRationale) {
+            PermissionRationaleDialog(
+                colors = colors,
+                icon = Icons.Outlined.LocationOn,
+                title = "Activa tu ubicación",
+                description = "La usamos para mostrarte lugares cercanos y calcular con precisión la ruta y tarifa de tus envíos.",
+                confirmText = "Activar ubicación",
+                onConfirm = {
+                    showLocationRationale = false
+                    permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                },
+                onDismiss = {
+                    showLocationRationale = false
+                    isLoadingPlaces = false
+                    placesMessage = "Activa tu ubicación para ver lugares cercanos"
+                }
+            )
+        }
+    }
+}
+
+/**
+ * Popup de permisos con la identidad visual de Perucho Courier:
+ * ícono en placa con degradado rojo→azul, título, descripción,
+ * botón primario (rojo) y una opción secundaria discreta en azul.
+ */
+@Composable
+private fun PermissionRationaleDialog(
+    colors: ClientLobbyColors,
+    icon: ImageVector,
+    title: String,
+    description: String,
+    confirmText: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(colors.dialogSurface)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 26.dp, vertical = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(BrandRed, BrandBlue)
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Text(
+                    text = title,
+                    color = colors.text,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = description,
+                    color = colors.muted,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Button(
+                    onClick = onConfirm,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandRed)
+                ) {
+                    Text(
+                        text = confirmText,
+                        color = Color.White,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 14.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Ahora no",
+                        color = BrandBlue,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        }
     }
 }
 
 @Composable
 private fun HomeTopBar(
+    colors: ClientLobbyColors,
     onMenuClick: () -> Unit
 ) {
     Box(
@@ -418,7 +676,7 @@ private fun HomeTopBar(
             Icon(
                 imageVector = Icons.Default.Menu,
                 contentDescription = "Menú",
-                tint = Color.Black,
+                tint = colors.text,
                 modifier = Modifier.size(34.dp)
             )
         }
@@ -464,7 +722,7 @@ private fun ServiceGrid(
                 subtitle = "Lima y provincias",
                 bg = AirCardBlue,
                 titleColor = Color.White,
-                        subtitleColor = Color.White.copy(alpha = 0.8f),
+                subtitleColor = Color.White.copy(alpha = 0.8f),
                 backgroundImage = R.drawable.caja_nacional,
                 onClick = onNacionalClick
             )
@@ -475,7 +733,7 @@ private fun ServiceGrid(
                 subtitle = "Próximamente disponible",
                 bg = AirCardBlue,
                 titleColor = Color.White,
-                        subtitleColor = Color.White.copy(alpha = 0.8f),
+                subtitleColor = Color.White.copy(alpha = 0.8f),
                 backgroundImage = R.drawable.moto,
                 onClick = {
                     Toast.makeText(
@@ -674,6 +932,7 @@ private fun ServiceCardLarge(
 
 @Composable
 private fun SearchDeliveryBar(
+    colors: ClientLobbyColors,
     onClick: () -> Unit
 ) {
     Row(
@@ -682,8 +941,8 @@ private fun SearchDeliveryBar(
             .fillMaxWidth()
             .height(58.dp)
             .clip(RoundedCornerShape(50.dp))
-            .background(Color.White)
-            .border(1.dp, BrandBlue.copy(alpha = 0.18f), RoundedCornerShape(50.dp))
+            .background(colors.card)
+            .border(1.dp, BrandBlue.copy(alpha = 0.25f), RoundedCornerShape(50.dp))
             .clickable { onClick() }
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -697,7 +956,7 @@ private fun SearchDeliveryBar(
 
         Text(
             text = "¿A dónde enviamos?",
-            color = Muted,
+            color = colors.muted,
             fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.weight(1f)
@@ -722,6 +981,7 @@ private fun SearchDeliveryBar(
 
 @Composable
 private fun RecentPlacesList(
+    colors: ClientLobbyColors,
     places: List<NearbyPlaceItem>,
     message: String,
     isLoading: Boolean,
@@ -737,7 +997,7 @@ private fun RecentPlacesList(
                         .fillMaxWidth()
                         .height(190.dp)
                         .clip(RoundedCornerShape(22.dp))
-                        .background(Color.White),
+                        .background(colors.card),
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator(
@@ -750,11 +1010,12 @@ private fun RecentPlacesList(
 
             places.isEmpty() -> {
                 RecentPlaceRow(
+                    colors = colors,
                     icon = Icons.Outlined.LocationOn,
                     title = message.ifBlank { "No se encontraron lugares cercanos" },
                     subtitle = "Intenta activar tu ubicación o vuelve a intentarlo",
                     time = "",
-                    iconBg = BrandBlueLight,
+                    iconBg = colors.blueTint,
                     iconTint = BrandBlue,
                     onClick = {}
                 )
@@ -763,12 +1024,13 @@ private fun RecentPlacesList(
             else -> {
                 places.forEachIndexed { index, place ->
                     RecentPlaceRow(
+                        colors = colors,
                         icon = Icons.Outlined.LocationOn,
                         title = place.title,
                         subtitle = place.subtitle,
                         time = place.distanceText,
-                        iconBg = Color(0xFFF0F0F0),
-                        iconTint = Color.Black,
+                        iconBg = colors.softBg,
+                        iconTint = colors.text,
                         onClick = { onPlaceClick(place) }
                     )
                 }
@@ -779,6 +1041,7 @@ private fun RecentPlacesList(
 
 @Composable
 private fun RecentPlaceRow(
+    colors: ClientLobbyColors,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String,
@@ -815,7 +1078,7 @@ private fun RecentPlaceRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                color = Dark,
+                color = colors.text,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -824,7 +1087,7 @@ private fun RecentPlaceRow(
 
             Text(
                 text = subtitle,
-                color = Color(0xFF999999),
+                color = colors.subtleText,
                 fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -835,6 +1098,7 @@ private fun RecentPlaceRow(
 
 @Composable
 private fun DrawerMenuContent(
+    colors: ClientLobbyColors,
     canCreateOrders: Boolean,
     isLoggedIn: Boolean,
     userName: String,
@@ -906,13 +1170,25 @@ private fun DrawerMenuContent(
 
                         Spacer(modifier = Modifier.width(14.dp))
 
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = userName,
-                                color = Color.White,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+
+                                Text(
+                                    text = userName,
+                                    color = Color.White,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                ThemeToggle(context)
+                            }
 
                             Spacer(modifier = Modifier.height(2.dp))
 
@@ -974,23 +1250,26 @@ private fun DrawerMenuContent(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .background(colors.sheetSurface)
                 .padding(vertical = 8.dp)
         ) {
             if (isLoggedIn) {
-                MenuSectionTitle("Mi cuenta")
+                MenuSectionTitle(colors, "Mi cuenta")
 
                 MenuItem(
+                    colors = colors,
                     icon = Icons.Outlined.AccountCircle,
-                    iconBg = LightBg,
-                    iconTint = Dark,
+                    iconBg = colors.softBg,
+                    iconTint = colors.text,
                     title = "Mi perfil",
                     subtitle = null,
                     onClick = onProfile
                 )
 
                 MenuItem(
+                    colors = colors,
                     icon = Icons.Outlined.ListAlt,
-                    iconBg = BrandRedLight,
+                    iconBg = colors.redTint,
                     iconTint = BrandRed,
                     title = "Mis pedidos",
                     subtitle = "Ver historial completo",
@@ -999,11 +1278,12 @@ private fun DrawerMenuContent(
                 )
             }
 
-            MenuSectionTitle("Servicios")
+            MenuSectionTitle(colors, "Servicios")
 
             MenuItem(
+                colors = colors,
                 icon = Icons.Outlined.Inventory2,
-                iconBg = BrandRedLight,
+                iconBg = colors.redTint,
                 iconTint = BrandRed,
                 title = "Nuevo pedido",
                 subtitle = "Realiza tu pedido nacional",
@@ -1013,8 +1293,9 @@ private fun DrawerMenuContent(
             )
 
             MenuItem(
+                colors = colors,
                 icon = Icons.Outlined.Public,
-                iconBg = BrandBlueLight,
+                iconBg = colors.blueTint,
                 iconTint = BrandBlue,
                 title = "Pedido Internacional",
                 subtitle = "USA / China → Perú · $8.5/kg",
@@ -1024,20 +1305,22 @@ private fun DrawerMenuContent(
             )
 
             MenuItem(
+                colors = colors,
                 icon = Icons.Outlined.LocationOn,
-                iconBg = Color(0xFFE8FAF0),
+                iconBg = colors.greenTint,
                 iconTint = Green,
                 title = "Rastrear pedido",
                 subtitle = "Seguimiento en tiempo real",
                 onClick = onTracking
             )
 
-            MenuSectionTitle("Información")
+            MenuSectionTitle(colors, "Información")
 
             MenuItem(
+                colors = colors,
                 icon = Icons.Outlined.Description,
-                iconBg = LightBg,
-                iconTint = Dark,
+                iconBg = colors.softBg,
+                iconTint = colors.text,
                 title = "Términos y Condiciones",
                 subtitle = "Condiciones de uso",
                 onClick = {
@@ -1050,9 +1333,10 @@ private fun DrawerMenuContent(
             )
 
             MenuItem(
+                colors = colors,
                 icon = Icons.Outlined.PrivacyTip,
-                iconBg = LightBg,
-                iconTint = Dark,
+                iconBg = colors.softBg,
+                iconTint = colors.text,
                 title = "Política de Privacidad",
                 subtitle = "Protección de datos",
                 onClick = {
@@ -1065,9 +1349,10 @@ private fun DrawerMenuContent(
             )
 
             MenuItem(
+                colors = colors,
                 icon = Icons.Outlined.HeadsetMic,
-                iconBg = LightBg,
-                iconTint = Dark,
+                iconBg = colors.softBg,
+                iconTint = colors.text,
                 title = "Soporte",
                 subtitle = "WhatsApp Perucho Courier",
                 onClick = onSupport
@@ -1103,7 +1388,7 @@ private fun DrawerMenuContent(
 
             Text(
                 text = "Perucho Courier v2.1.0",
-                color = Color(0xFFBBBBBB),
+                color = colors.subtleText,
                 fontSize = 11.sp,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1115,10 +1400,10 @@ private fun DrawerMenuContent(
 }
 
 @Composable
-private fun MenuSectionTitle(text: String) {
+private fun MenuSectionTitle(colors: ClientLobbyColors, text: String) {
     Text(
         text = text.uppercase(),
-        color = Color(0xFFBBBBBB),
+        color = colors.subtleText,
         fontSize = 10.sp,
         fontWeight = FontWeight.Black,
         letterSpacing = 0.7.sp,
@@ -1128,6 +1413,7 @@ private fun MenuSectionTitle(text: String) {
 
 @Composable
 private fun MenuItem(
+    colors: ClientLobbyColors,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     iconBg: Color,
     iconTint: Color,
@@ -1172,7 +1458,7 @@ private fun MenuItem(
         ) {
             Text(
                 text = title,
-                color = Dark.copy(alpha = alphaValue),
+                color = colors.text.copy(alpha = alphaValue),
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -1184,7 +1470,7 @@ private fun MenuItem(
 
                 Text(
                     text = finalSubtitle,
-                    color = if (!enabled) BrandRed.copy(alpha = 0.75f) else Color(0xFF999999),
+                    color = if (!enabled) BrandRed.copy(alpha = 0.75f) else colors.subtleText,
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -1203,7 +1489,7 @@ private fun MenuItem(
                     Icon(
                         imageVector = Icons.Outlined.Lock,
                         contentDescription = null,
-                        tint = Color(0xFFBBBBBB),
+                        tint = colors.arrow,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -1230,7 +1516,7 @@ private fun MenuItem(
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowRight,
                         contentDescription = null,
-                        tint = Color(0xFFDDDDDD),
+                        tint = colors.arrow,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -1246,5 +1532,54 @@ private fun getInitialsClient(name: String): String {
         parts.size >= 2 -> "${parts[0].first()}${parts[1].first()}".uppercase()
         parts.size == 1 -> parts[0].take(2).uppercase()
         else -> "US"
+    }
+}
+
+@Composable
+private fun ThemeToggle(
+    context: Context
+) {
+
+    val dark = ThemeManager.isDarkMode.value
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+
+        Icon(
+            imageVector = Icons.Outlined.LightMode,
+            contentDescription = null,
+            tint = if (!dark)
+                Color(0xFFFFD54F)
+            else
+                Color.White.copy(alpha = 0.45f),
+            modifier = Modifier.size(18.dp)
+        )
+
+        Switch(
+            checked = dark,
+            onCheckedChange = {
+                ThemeManager.setDark(context, it)
+            },
+            modifier = Modifier.scale(0.78f),
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = Color(0xFF0F172A),
+                uncheckedThumbColor = Color.White,
+                uncheckedTrackColor = Color.White.copy(alpha = 0.35f),
+                uncheckedBorderColor = Color.Transparent,
+                checkedBorderColor = Color.Transparent
+            )
+        )
+
+        Icon(
+            imageVector = Icons.Outlined.DarkMode,
+            contentDescription = null,
+            tint = if (dark)
+                Color(0xFFB3E5FC)
+            else
+                Color.White.copy(alpha = 0.45f),
+            modifier = Modifier.size(18.dp)
+        )
     }
 }

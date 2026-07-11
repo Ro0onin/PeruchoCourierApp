@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -31,7 +32,8 @@ import com.example.peruchocourierapp.models.ProfileResponse
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-
+import com.example.peruchocourierapp.theme.ThemeManager
+import androidx.compose.material.icons.outlined.DarkMode
 private val Blue = Color(0xFF1A4FBF)
 private val BlueDark = Color(0xFF0D3280)
 private val BlueMid = Color(0xFF2D6BE4)
@@ -46,10 +48,72 @@ private val YellowBg = Color(0xFFFEF3C7)
 private val YellowText = Color(0xFF92400E)
 private val Green = Color(0xFF10B981)
 
+private data class PerfilClienteColors(
+    val background: Color,
+    val card: Color,
+    val field: Color,
+    val fieldEditable: Color,
+    val border: Color,
+    val text: Color,
+    val muted: Color,
+    val lightText: Color,
+    val iconBg: Color,
+    val tagLockedBg: Color,
+    val tagEditBg: Color,
+    val warningBg: Color,
+    val warningText: Color,
+    val success: Color,
+    val supportCard: Color
+)
+
+@Composable
+private fun perfilClienteColors(): PerfilClienteColors {
+    val dark = ThemeManager.isDarkMode.value
+
+    return if (dark) {
+        PerfilClienteColors(
+            background = Color(0xFF0F172A),
+            card = Color(0xFF111827),
+            field = Color(0xFF1F2937),
+            fieldEditable = Color(0xFF111827),
+            border = Color(0xFF334155),
+            text = Color(0xFFF8FAFC),
+            muted = Color(0xFFCBD5E1),
+            lightText = Color(0xFF94A3B8),
+            iconBg = Color(0xFF172554),
+            tagLockedBg = Color(0xFF1F2937),
+            tagEditBg = Color(0xFF172554),
+            warningBg = Color(0xFF422006),
+            warningText = Color(0xFFFDE68A),
+            success = Color(0xFF34D399),
+            supportCard = Color(0xFF111827)
+        )
+    } else {
+        PerfilClienteColors(
+            background = GrayBg,
+            card = Color.White,
+            field = GrayBg,
+            fieldEditable = Color.White,
+            border = GrayBorder,
+            text = Dark,
+            muted = GrayText,
+            lightText = GrayLight,
+            iconBg = BlueLight,
+            tagLockedBg = GrayBorder,
+            tagEditBg = BlueLight,
+            warningBg = YellowBg,
+            warningText = YellowText,
+            success = Green,
+            supportCard = Color.White
+        )
+    }
+}
+
 @Composable
 fun PerfilClienteScreen(navController: NavController) {
     val context = LocalContext.current
     val sessionManager = SessionManager(context)
+    val colors = perfilClienteColors()
 
     var name by remember { mutableStateOf(sessionManager.getUserName() ?: "Cliente") }
     val email = sessionManager.getUserEmail() ?: ""
@@ -104,7 +168,7 @@ fun PerfilClienteScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(GrayBg)
+            .background(colors.background)
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
     ) {
@@ -164,7 +228,7 @@ fun PerfilClienteScreen(navController: NavController) {
         ) {
             Text(
                 text = name,
-                color = Dark,
+                color = colors.text,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Black,
                 modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -178,47 +242,55 @@ fun PerfilClienteScreen(navController: NavController) {
             ) {
                 Icon(Icons.Outlined.ShoppingBag, null, tint = Blue, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(5.dp))
-                Text("Cliente", color = GrayText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("Cliente", color = colors.muted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            ProfileSection("Información personal", Icons.Outlined.Person) {
-                LockedProfileField("Nombre completo", name, Icons.Outlined.Person)
-                LockedProfileField("DNI / Documento", dni, Icons.Outlined.Badge)
-                LockedProfileField("Correo electrónico", email.ifBlank { "-" }, Icons.Outlined.Email)
-                LockedProfileField("Teléfono", phone, Icons.Outlined.Phone)
+            ProfileSection(
+                title = "Información personal",
+                icon = Icons.Outlined.Person,
+                colors = colors
+            ) {
+                LockedProfileField("Nombre completo", name, Icons.Outlined.Person, colors)
+                LockedProfileField("DNI / Documento", dni, Icons.Outlined.Badge, colors)
+                LockedProfileField("Correo electrónico", email.ifBlank { "-" }, Icons.Outlined.Email, colors)
+                LockedProfileField("Teléfono", phone, Icons.Outlined.Phone, colors)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            ProfileSection("Dirección de entrega", Icons.Outlined.LocationOn) {
-                EditableAddressField("País", pais, Icons.Outlined.Public) {
+            ProfileSection(
+                title = "Dirección de entrega",
+                icon = Icons.Outlined.LocationOn,
+                colors = colors
+            ) {
+                EditableAddressField("País", pais, Icons.Outlined.Public, colors) {
                     pais = it
                     successMessage = ""
                 }
 
-                EditableAddressField("Ciudad", ciudad, Icons.Outlined.LocationCity) {
+                EditableAddressField("Ciudad", ciudad, Icons.Outlined.LocationCity, colors) {
                     ciudad = it
                     successMessage = ""
                 }
 
-                EditableAddressField("Dirección", direccion, Icons.Outlined.Home) {
+                EditableAddressField("Dirección", direccion, Icons.Outlined.Home, colors) {
                     direccion = it
                     successMessage = ""
                 }
 
-                EditableAddressField("Apartamento / Referencia", apartamento, Icons.Outlined.Apartment) {
+                EditableAddressField("Apartamento / Referencia", apartamento, Icons.Outlined.Apartment, colors) {
                     apartamento = it
                     successMessage = ""
                 }
 
-                EditableAddressField("Provincia", provincia, Icons.Outlined.Map) {
+                EditableAddressField("Provincia", provincia, Icons.Outlined.Map, colors) {
                     provincia = it
                     successMessage = ""
                 }
 
-                EditableAddressField("Código postal", codigoPostal, Icons.Outlined.MarkunreadMailbox) {
+                EditableAddressField("Código postal", codigoPostal, Icons.Outlined.MarkunreadMailbox, colors) {
                     codigoPostal = it
                     successMessage = ""
                 }
@@ -270,11 +342,11 @@ fun PerfilClienteScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            WarningBox()
+            WarningBox(colors)
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            SupportAction {
+            SupportAction(colors) {
                 abrirWhatsApp(
                     context = context,
                     numero = "51967929967",
@@ -282,11 +354,12 @@ fun PerfilClienteScreen(navController: NavController) {
                 )
             }
 
+
             if (successMessage.isNotBlank()) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = successMessage,
-                    color = Green,
+                    color = colors.success,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -296,7 +369,7 @@ fun PerfilClienteScreen(navController: NavController) {
 
             Text(
                 text = "PERFIL DE USUARIO",
-                color = GrayLight,
+                color = colors.lightText,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 1.sp,
@@ -310,13 +383,14 @@ fun PerfilClienteScreen(navController: NavController) {
 private fun ProfileSection(
     title: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    colors: PerfilClienteColors,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = androidx.compose.foundation.BorderStroke(1.dp, GrayBorder)
+        colors = CardDefaults.cardColors(containerColor = colors.card),
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.border)
     ) {
         Column(modifier = Modifier.padding(15.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -324,7 +398,7 @@ private fun ProfileSection(
                     modifier = Modifier
                         .size(34.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(BlueLight),
+                        .background(colors.iconBg),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(icon, null, tint = Blue, modifier = Modifier.size(20.dp))
@@ -334,7 +408,7 @@ private fun ProfileSection(
 
                 Text(
                     text = title.uppercase(),
-                    color = Dark,
+                    color = colors.text,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Black,
                     letterSpacing = 0.6.sp
@@ -352,11 +426,12 @@ private fun EditableAddressField(
     label: String,
     value: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    colors: PerfilClienteColors,
     onValueChange: (String) -> Unit
 ) {
     Text(
         text = label.uppercase(),
-        color = GrayText,
+        color = colors.muted,
         fontSize = 10.sp,
         fontWeight = FontWeight.Black,
         letterSpacing = 0.5.sp
@@ -372,13 +447,20 @@ private fun EditableAddressField(
             Icon(icon, null, tint = Blue)
         },
         trailingIcon = {
-            ProfileTag("Editar", false)
+            ProfileTag("Editar", false, colors)
         },
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = Blue,
             unfocusedBorderColor = Blue,
-            focusedContainerColor = Color.White,
-            unfocusedContainerColor = Color.White
+            focusedContainerColor = colors.fieldEditable,
+            unfocusedContainerColor = colors.fieldEditable,
+            disabledContainerColor = colors.fieldEditable,
+            focusedTextColor = colors.text,
+            unfocusedTextColor = colors.text,
+            disabledTextColor = colors.text,
+            cursorColor = Blue,
+            focusedLabelColor = colors.muted,
+            unfocusedLabelColor = colors.muted
         ),
         shape = RoundedCornerShape(13.dp),
         modifier = Modifier.fillMaxWidth()
@@ -391,11 +473,12 @@ private fun EditableAddressField(
 private fun LockedProfileField(
     label: String,
     value: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    colors: PerfilClienteColors
 ) {
     Text(
         text = label.uppercase(),
-        color = GrayText,
+        color = colors.muted,
         fontSize = 10.sp,
         fontWeight = FontWeight.Black,
         letterSpacing = 0.5.sp
@@ -407,17 +490,17 @@ private fun LockedProfileField(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(13.dp))
-            .background(GrayBg)
+            .background(colors.field)
             .padding(horizontal = 13.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = GrayLight, modifier = Modifier.size(21.dp))
+        Icon(icon, null, tint = colors.lightText, modifier = Modifier.size(21.dp))
 
         Spacer(modifier = Modifier.width(10.dp))
 
         Text(
             text = value,
-            color = Dark,
+            color = colors.text,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
@@ -425,18 +508,22 @@ private fun LockedProfileField(
             modifier = Modifier.weight(1f)
         )
 
-        ProfileTag("Fijo", true)
+        ProfileTag("Fijo", true, colors)
     }
 
     Spacer(modifier = Modifier.height(12.dp))
 }
 
 @Composable
-private fun ProfileTag(text: String, locked: Boolean) {
+private fun ProfileTag(
+    text: String,
+    locked: Boolean,
+    colors: PerfilClienteColors
+) {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(7.dp))
-            .background(if (locked) GrayBorder else BlueLight)
+            .background(if (locked) colors.tagLockedBg else colors.tagEditBg)
             .padding(horizontal = 8.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -444,7 +531,7 @@ private fun ProfileTag(text: String, locked: Boolean) {
             Icon(
                 Icons.Outlined.Lock,
                 null,
-                tint = GrayText,
+                tint = colors.muted,
                 modifier = Modifier.size(11.dp)
             )
             Spacer(modifier = Modifier.width(3.dp))
@@ -452,7 +539,7 @@ private fun ProfileTag(text: String, locked: Boolean) {
 
         Text(
             text = text,
-            color = if (locked) GrayText else Blue,
+            color = if (locked) colors.muted else Blue,
             fontSize = 10.sp,
             fontWeight = FontWeight.Black
         )
@@ -460,12 +547,12 @@ private fun ProfileTag(text: String, locked: Boolean) {
 }
 
 @Composable
-private fun WarningBox() {
+private fun WarningBox(colors: PerfilClienteColors) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(13.dp))
-            .background(YellowBg)
+            .background(colors.warningBg)
             .padding(13.dp),
         verticalAlignment = Alignment.Top
     ) {
@@ -480,7 +567,7 @@ private fun WarningBox() {
 
         Text(
             text = "Solo puedes editar tu dirección de entrega. Para cambiar DNI, teléfono o correo, solicítalo por WhatsApp.",
-            color = YellowText,
+            color = colors.warningText,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
             lineHeight = 17.sp
@@ -489,12 +576,15 @@ private fun WarningBox() {
 }
 
 @Composable
-private fun SupportAction(onClick: () -> Unit) {
+private fun SupportAction(
+    colors: PerfilClienteColors,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(15.dp))
-            .background(Color.White)
+            .background(colors.supportCard)
             .clickable { onClick() }
             .padding(15.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -511,22 +601,23 @@ private fun SupportAction(onClick: () -> Unit) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Contactar soporte",
-                color = Dark,
+                color = colors.text,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Black
             )
 
             Text(
                 text = "Ayuda con tus datos o pedidos",
-                color = GrayText,
+                color = colors.muted,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold
             )
         }
 
-        Icon(Icons.Outlined.ChevronRight, null, tint = GrayText)
+        Icon(Icons.Outlined.ChevronRight, null, tint = colors.muted)
     }
 }
+
 
 private fun abrirWhatsApp(
     context: android.content.Context,

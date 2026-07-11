@@ -12,8 +12,8 @@ android {
         applicationId = "com.jeanpier.peruchocourier"
         minSdk = 24
         targetSdk = 36
-        versionCode = 19
-        versionName = "1.0.18"
+        versionCode = 25
+        versionName = "1.0.24"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val mapsApiKey = rootProject.file("local.properties")
             .readLines()
@@ -77,6 +77,7 @@ dependencies {
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.android.gms:play-services-auth:21.2.0")
     implementation("com.google.android.libraries.places:places:4.1.0")
+    implementation(libs.androidx.compose.foundation)
 
 
 

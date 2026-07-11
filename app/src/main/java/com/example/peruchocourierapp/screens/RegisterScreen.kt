@@ -8,6 +8,7 @@ import android.util.Patterns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -47,17 +48,90 @@ import retrofit2.Callback
 import retrofit2.Response
 import java.io.File
 import java.io.FileOutputStream
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.example.peruchocourierapp.R
 
 private val PNegro = Color(0xFF1A1A1A)
 private val PRojo = Color(0xFFE02020)
+private val PBlue = Color(0xFF1E4FD8)
 private val PGrisF = Color(0xFFF5F5F5)
 private val PGrisBorde = Color(0xFFE8E8E8)
 private val PTextoSub = Color(0xFF888888)
+
+private data class RegisterColors(
+    val screenBg: Color,
+    val cardBg: Color,
+    val fieldBg: Color,
+    val border: Color,
+    val text: Color,
+    val muted: Color,
+    val placeholder: Color,
+    val primaryButton: Color,
+    val topBar: Color,
+    val successBg: Color,
+    val successText: Color,
+    val errorBg: Color,
+    val errorText: Color,
+    val uploadSelectedBg: Color,
+    val uploadSelectedIcon: Color,
+    val checkboxUnchecked: Color,
+    val divider: Color
+)
+
+@Composable
+private fun registerColors(): RegisterColors {
+    val dark = isSystemInDarkTheme()
+
+    return if (dark) {
+        RegisterColors(
+            screenBg = Color(0xFF0F172A),
+            cardBg = Color(0xFF111827),
+            fieldBg = Color(0xFF1F2937),
+            border = Color(0xFF334155),
+            text = Color(0xFFF8FAFC),
+            muted = Color(0xFFCBD5E1),
+            placeholder = Color(0xFF94A3B8),
+            primaryButton = PRojo,
+            topBar = PBlue,
+            successBg = Color(0xFF14532D),
+            successText = Color(0xFFDCFCE7),
+            errorBg = Color(0xFF3F1717),
+            errorText = Color(0xFFFFB4B4),
+            uploadSelectedBg = Color(0xFF14532D),
+            uploadSelectedIcon = Color(0xFF86EFAC),
+            checkboxUnchecked = Color(0xFF475569),
+            divider = Color(0xFF334155)
+        )
+    } else {
+        RegisterColors(
+            screenBg = Color.White,
+            cardBg = Color.White,
+            fieldBg = PGrisF,
+            border = PGrisBorde,
+            text = PNegro,
+            muted = PTextoSub,
+            placeholder = PTextoSub,
+            primaryButton = PNegro,
+            topBar = PBlue,
+            successBg = Color(0xFFDCFCE7),
+            successText = Color(0xFF16A34A),
+            errorBg = Color(0xFFFFF0F0),
+            errorText = PRojo,
+            uploadSelectedBg = Color(0xFFEAFBF0),
+            uploadSelectedIcon = Color(0xFF16A34A),
+            checkboxUnchecked = PGrisBorde,
+            divider = PGrisBorde
+        )
+    }
+}
 
 @Composable
 fun RegisterScreen(navController: NavController) {
 
     val context = LocalContext.current
+    val colors = registerColors()
 
     var name by remember { mutableStateOf("") }
     var dni by remember { mutableStateOf("") }
@@ -71,6 +145,7 @@ fun RegisterScreen(navController: NavController) {
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
     var acceptedTerms by remember { mutableStateOf(false) }
+    var showTermsPopup by remember { mutableStateOf(false) }
 
     var dniFrontUri by remember { mutableStateOf<Uri?>(null) }
     var dniBackUri by remember { mutableStateOf<Uri?>(null) }
@@ -188,7 +263,7 @@ fun RegisterScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(colors.screenBg)
             .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding()
@@ -198,7 +273,7 @@ fun RegisterScreen(navController: NavController) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(PNegro)
+                .background(colors.topBar)
                 .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
             Box(
@@ -219,23 +294,14 @@ fun RegisterScreen(navController: NavController) {
                 )
             }
 
-            Column(
-                modifier = Modifier.align(Alignment.Center),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "PERUCHO",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Black,
-                    color = PRojo
-                )
-                Text(
-                    text = "COURIER",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White
-                )
-            }
+            Image(
+                painter = painterResource(R.drawable.logo_perucho2),
+                contentDescription = "Perucho Courier",
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .height(110.dp),   // puedes probar 54, 58 o 62
+                contentScale = ContentScale.Fit
+            )
         }
 
         Column(
@@ -245,12 +311,13 @@ fun RegisterScreen(navController: NavController) {
                 "Crear cuenta",
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Black,
-                color = PNegro
+                color = colors.text
             )
+
             Text(
                 "Regístrate para empezar a enviar",
                 fontSize = 14.sp,
-                color = PTextoSub,
+                color = colors.muted,
                 modifier = Modifier.padding(top = 4.dp)
             )
         }
@@ -393,12 +460,11 @@ fun RegisterScreen(navController: NavController) {
 
             Surface(
                 shape = RoundedCornerShape(14.dp),
-                color = PGrisF
+                color = colors.fieldBg
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { acceptedTerms = !acceptedTerms }
                         .padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -408,23 +474,34 @@ fun RegisterScreen(navController: NavController) {
                         onCheckedChange = { acceptedTerms = it },
                         modifier = Modifier.size(22.dp),
                         colors = CheckboxDefaults.colors(
-                            checkedColor = PNegro,
-                            uncheckedColor = PGrisBorde,
+                            checkedColor = colors.text,
+                            uncheckedColor = colors.checkboxUnchecked,
                             checkmarkColor = Color.White
                         )
                     )
 
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             "Aceptar términos y condiciones",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = PNegro
+                            color = colors.text
                         )
+
                         Text(
-                            "Al continuar aceptas nuestra política de privacidad",
+                            "Lee y acepta nuestra política de privacidad",
                             fontSize = 11.sp,
-                            color = PTextoSub
+                            color = colors.muted
+                        )
+
+                        Text(
+                            text = "Ver términos y condiciones",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = PRojo,
+                            modifier = Modifier
+                                .padding(top = 6.dp)
+                                .clickable { showTermsPopup = true }
                         )
                     }
                 }
@@ -435,11 +512,11 @@ fun RegisterScreen(navController: NavController) {
             if (errorMessage.isNotEmpty()) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = if (isSuccess) Color(0xFFDCFCE7) else Color(0xFFFFF0F0)
+                    color = if (isSuccess) colors.successBg else colors.errorBg
                 ) {
                     Text(
                         text = errorMessage,
-                        color = if (isSuccess) Color(0xFF16A34A) else PRojo,
+                        color = if (isSuccess) colors.successText else colors.errorText,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center,
@@ -586,7 +663,7 @@ fun RegisterScreen(navController: NavController) {
                     .height(54.dp),
                 shape = RoundedCornerShape(50),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = PNegro,
+                    containerColor = colors.primaryButton,
                     contentColor = Color.White
                 ),
                 enabled = !isLoading
@@ -614,19 +691,166 @@ fun RegisterScreen(navController: NavController) {
                 Text(
                     "¿Ya tienes cuenta?",
                     fontSize = 13.sp,
-                    color = PTextoSub
+                    color = colors.muted
                 )
+
                 TextButton(onClick = { navController.navigate("login") }) {
                     Text(
                         "Inicia sesión",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = PNegro
+                        color = colors.text
                     )
                 }
             }
 
             Spacer(Modifier.height(24.dp))
+        }
+    }
+
+    if (showTermsPopup) {
+        TermsAndConditionsPopup(
+            onAccept = {
+                acceptedTerms = true
+                showTermsPopup = false
+            },
+            onDismiss = {
+                showTermsPopup = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun TermsAndConditionsPopup(
+    onAccept: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = registerColors()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.cardBg,
+        shape = RoundedCornerShape(22.dp),
+        title = {
+            Column {
+                Text(
+                    text = "Términos y condiciones",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    color = colors.text
+                )
+
+                Text(
+                    text = "Perucho Courier Express",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.muted
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                TermsItem("01", "Plazos y tiempos de entrega", "Los tiempos de entrega informados por Perucho Courier son estimados y pueden variar por tráfico, condiciones climáticas, restricciones de tránsito, disponibilidad de repartidores, volumen de pedidos u otras situaciones ajenas al control de la empresa. En pedidos internacionales, los plazos pueden verse afectados por procesos aduaneros, aerolíneas, operadores logísticos externos, tiendas de origen o autoridades competentes.")
+
+                TermsItem("02", "Tarifas y pagos", "Las tarifas mostradas en la aplicación o sitio web son calculadas según distancia, tipo de vehículo, peso del paquete, destino, tipo de servicio y demás factores logísticos. Perucho Courier se reserva el derecho de actualizar tarifas, promociones, comisiones o condiciones de pago cuando lo considere necesario. El cliente deberá revisar el monto final antes de confirmar su pedido.")
+
+                TermsItem("03", "Cancelaciones y reprogramaciones", "Si un pedido es cancelado después de haber sido confirmado, asignado a un repartidor o iniciado su proceso logístico, Perucho Courier podrá aplicar cargos operativos por tiempo, traslado, uso de recursos o gestión del pedido. Las reprogramaciones estarán sujetas a disponibilidad de horarios, rutas y repartidores.")
+
+                TermsItem("04", "Tiempo de espera del repartidor", "El repartidor esperará un máximo de 10 minutos en el punto de recojo o entrega. Superado dicho tiempo, Perucho Courier podrá reprogramar el servicio, continuar con la ruta asignada o aplicar cargos adicionales según corresponda.")
+
+                TermsItem("05", "Productos prohibidos", "Está prohibido enviar productos ilegales, peligrosos o restringidos por la legislación peruana: armas, municiones, explosivos, sustancias ilícitas, dinero en efectivo, animales vivos, mercancía robada, falsificada, inflamable, tóxica, corrosiva o peligrosa.")
+
+                TermsItem("06", "Responsabilidad del cliente", "El cliente es responsable de proporcionar información verídica, completa y actualizada: direcciones, datos del remitente y destinatario, descripción real del paquete, peso, tamaño, tracking number y comprobantes requeridos.")
+
+                TermsItem("07", "Pedidos internacionales", "En pedidos internacionales, Perucho Courier actúa como operador logístico e intermediario para facilitar la recepción, gestión y entrega de compras realizadas en tiendas del exterior. Los tiempos internacionales son referenciales.")
+
+                TermsItem("08", "Tracking Number y compras internacionales", "El cliente es responsable de ingresar correctamente el Tracking Number de sus compras internacionales. Si ingresa un número incorrecto, incompleto o perteneciente a otro pedido, Perucho Courier no será responsable por demoras o confusiones.")
+
+                TermsItem("09", "Impuestos, aduanas y gastos adicionales", "Cuando el valor declarado de una compra internacional supere los límites establecidos por SUNAT u otras autoridades, el cliente será responsable del pago de impuestos, tributos, aranceles, almacenaje, aforos u otros gastos aduaneros.")
+
+                TermsItem("10", "Seguimiento y geolocalización", "La aplicación puede mostrar seguimiento en tiempo real mediante GPS. Esta información es referencial y puede presentar variaciones debido a señal del dispositivo, cobertura de red, permisos de ubicación o condiciones técnicas externas.")
+
+                TermsItem("11", "Chat entre cliente y repartidor", "El sistema de mensajería debe utilizarse solo para coordinar aspectos relacionados con el servicio. Está prohibido usar lenguaje ofensivo, amenazas, acoso, solicitar servicios fuera de la plataforma o realizar actividades fraudulentas.")
+
+                TermsItem("12", "Seguro de envío y cobertura", "Perucho Courier podrá ofrecer seguros o coberturas adicionales para determinados envíos. Las condiciones, costos, límites de cobertura, exclusiones y requisitos serán informados al cliente antes de contratar dicho servicio.")
+
+                TermsItem("13", "Pérdidas, daños y embalaje", "El cliente es responsable de entregar los productos correctamente embalados, protegidos y aptos para transporte. Perucho Courier no será responsable por daños derivados de embalaje inadecuado o información incorrecta.")
+
+                TermsItem("14", "Paquetes no reclamados o abandonados", "Los paquetes que permanezcan sin ser reclamados, coordinados o retirados por el cliente durante más de 30 días podrán ser considerados abandonados y generar cargos de almacenaje, gestión u otros costos operativos.")
+
+                TermsItem("15", "Limitación de responsabilidad", "Perucho Courier no será responsable por retrasos, pérdidas, retenciones, daños, imposibilidad de entrega o costos adicionales ocasionados por información incorrecta, decisiones de autoridades, demoras externas, fallas GPS, internet o fuerza mayor.")
+
+                TermsItem("16", "Fuerza mayor", "Perucho Courier no será responsable por incumplimientos o demoras ocasionadas por eventos fuera de su control razonable, tales como desastres naturales, huelgas, disturbios, cierre de vías, restricciones gubernamentales o emergencias.")
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onAccept,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(50),
+                colors = ButtonDefaults.buttonColors(containerColor = colors.primaryButton)
+            ) {
+                Text(
+                    text = "Aceptar términos",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Cerrar",
+                    color = PRojo,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    )
+}
+
+@Composable
+private fun TermsItem(
+    number: String,
+    title: String,
+    body: String
+) {
+    val colors = registerColors()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 16.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = number,
+            color = PRojo,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Black,
+            modifier = Modifier.width(38.dp)
+        )
+
+        Column {
+            Text(
+                text = title,
+                color = colors.text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Black
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = body,
+                color = colors.muted,
+                fontSize = 12.sp,
+                lineHeight = 17.sp
+            )
         }
     }
 }
@@ -638,12 +862,13 @@ private fun DniUploadBox(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val colors = registerColors()
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() },
         shape = RoundedCornerShape(14.dp),
-        color = if (selected) Color(0xFFEAFBF0) else PGrisF
+        color = if (selected) colors.uploadSelectedBg else colors.fieldBg
     ) {
         Row(
             modifier = Modifier.padding(14.dp),
@@ -652,7 +877,7 @@ private fun DniUploadBox(
             Icon(
                 imageVector = if (selected) Icons.Outlined.CheckCircle else Icons.Outlined.UploadFile,
                 contentDescription = null,
-                tint = if (selected) Color(0xFF16A34A) else PTextoSub,
+                tint = if (selected) colors.uploadSelectedIcon else colors.muted,
                 modifier = Modifier.size(26.dp)
             )
 
@@ -661,13 +886,14 @@ private fun DniUploadBox(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    color = PNegro,
+                    color = colors.text,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 )
+
                 Text(
                     text = subtitle,
-                    color = PTextoSub,
+                    color = colors.muted,
                     fontSize = 12.sp
                 )
             }
@@ -677,11 +903,12 @@ private fun DniUploadBox(
 
 @Composable
 private fun SectionLabel(text: String) {
+    val colors = registerColors()
     Text(
         text = text,
         fontSize = 11.sp,
         fontWeight = FontWeight.ExtraBold,
-        color = PTextoSub,
+        color = colors.muted,
         letterSpacing = 0.6.sp
     )
 }
@@ -699,6 +926,7 @@ private fun RegField(
     isFirst: Boolean = false,
     isLast: Boolean = false
 ) {
+    val colors = registerColors()
     val topRadius = if (isFirst) 14.dp else 4.dp
     val bottomRadius = if (isLast) 14.dp else 4.dp
 
@@ -718,10 +946,10 @@ private fun RegField(
             .height(56.dp),
         shape = shape,
         placeholder = {
-            Text(placeholder, color = PTextoSub, fontSize = 14.sp)
+            Text(placeholder, color = colors.muted, fontSize = 14.sp)
         },
         textStyle = androidx.compose.ui.text.TextStyle(
-            color = PNegro,
+            color = colors.text,
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium
         ),
@@ -734,7 +962,7 @@ private fun RegField(
             Icon(
                 leadingIcon,
                 contentDescription = null,
-                tint = PTextoSub,
+                tint = colors.placeholder,
                 modifier = Modifier.size(20.dp)
             )
         },
@@ -747,20 +975,20 @@ private fun RegField(
                         else
                             Icons.Outlined.VisibilityOff,
                         contentDescription = null,
-                        tint = PTextoSub,
+                        tint = colors.placeholder,
                         modifier = Modifier.size(20.dp)
                     )
                 }
             }
         },
         colors = TextFieldDefaults.colors(
-            focusedContainerColor = PGrisF,
-            unfocusedContainerColor = PGrisF,
+            focusedContainerColor = colors.fieldBg,
+            unfocusedContainerColor = colors.fieldBg,
             focusedIndicatorColor = Color.Transparent,
             unfocusedIndicatorColor = Color.Transparent,
-            focusedTextColor = PNegro,
-            unfocusedTextColor = PNegro,
-            cursorColor = PNegro
+            focusedTextColor = colors.text,
+            unfocusedTextColor = colors.text,
+            cursorColor = colors.text
         )
     )
 
@@ -769,7 +997,7 @@ private fun RegField(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(PGrisBorde)
+                .background(colors.divider)
         )
     }
 }

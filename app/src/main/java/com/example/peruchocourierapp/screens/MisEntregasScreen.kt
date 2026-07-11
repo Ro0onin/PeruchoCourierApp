@@ -1,13 +1,14 @@
 package com.example.peruchocourierapp.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.Image
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
@@ -18,10 +19,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,10 +34,10 @@ import com.example.peruchocourierapp.SessionManager
 import com.example.peruchocourierapp.api.RetrofitClient
 import com.example.peruchocourierapp.models.EntregaItem
 import com.example.peruchocourierapp.models.GetDriverHistoryResponse
+import com.example.peruchocourierapp.theme.ThemeManager
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import androidx.compose.ui.graphics.ColorFilter
 
 private val DriverBlue = Color(0xFF1A4FBF)
 private val DriverBlueDark = Color(0xFF0D3280)
@@ -46,10 +49,68 @@ private val DriverBorder = Color(0xFFE8ECF4)
 private val DriverGreen = Color(0xFF22C55E)
 private val DriverRed = Color(0xFFE02020)
 
+private data class DriverColors(
+    val background: Color,
+    val card: Color,
+    val border: Color,
+    val text: Color,
+    val muted: Color,
+    val divider: Color,
+    val bottomBar: Color,
+    val bottomText: Color,
+    val successBg: Color,
+    val successText: Color,
+    val personBg: Color,
+    val bcpBg: Color,
+    val bcpText: Color,
+    val error: Color
+)
+
+@Composable
+private fun driverColors(): DriverColors {
+    val dark = ThemeManager.isDarkMode.value
+    return if (dark) {
+        DriverColors(
+            background = Color(0xFF0F172A),
+            card = Color(0xFF111827),
+            border = Color(0xFF334155),
+            text = Color(0xFFF8FAFC),
+            muted = Color(0xFFCBD5E1),
+            divider = Color(0xFF1F2937),
+            bottomBar = Color(0xFF111827),
+            bottomText = Color(0xFF94A3B8),
+            successBg = Color(0xFF14532D),
+            successText = Color(0xFFDCFCE7),
+            personBg = Color(0xFF172554),
+            bcpBg = Color(0xFF451A03),
+            bcpText = Color(0xFFFBBF24),
+            error = Color(0xFFFFB4B4)
+        )
+    } else {
+        DriverColors(
+            background = DriverBg,
+            card = Color.White,
+            border = DriverBorder,
+            text = DriverText,
+            muted = DriverMuted,
+            divider = DriverBg,
+            bottomBar = Color.White,
+            bottomText = Color(0xFFB0BAD0),
+            successBg = Color(0xFFD1FAE5),
+            successText = Color(0xFF065F46),
+            personBg = Color(0xFFE8EFFE),
+            bcpBg = Color(0xFFFFF4E8),
+            bcpText = Color(0xFFD97706),
+            error = DriverRed
+        )
+    }
+}
+
 @Composable
 fun MisEntregasScreen(navController: NavController) {
     val context = LocalContext.current
     val sessionManager = SessionManager(context)
+    val colors = driverColors()
 
     var entregas by remember { mutableStateOf<List<EntregaItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -99,7 +160,7 @@ fun MisEntregasScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(DriverBg)
+            .background(colors.background)
             .navigationBarsPadding()
     ) {
         HeaderMisEntregas(
@@ -107,6 +168,7 @@ fun MisEntregasScreen(navController: NavController) {
         )
 
         EstadisticasEntregas(
+            colors = colors,
             entregas = entregas.size,
             ganado = totalGanado,
             kilometros = totalKm
@@ -114,7 +176,7 @@ fun MisEntregasScreen(navController: NavController) {
 
         LazyColumn(
             modifier = Modifier
-                .fillMaxSize()
+                .weight(1f)
                 .padding(horizontal = 14.dp),
             contentPadding = PaddingValues(top = 14.dp, bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -137,7 +199,7 @@ fun MisEntregasScreen(navController: NavController) {
                     item {
                         Text(
                             text = errorMessage,
-                            color = DriverRed,
+                            color = colors.error,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(top = 24.dp)
@@ -149,7 +211,7 @@ fun MisEntregasScreen(navController: NavController) {
                     item {
                         Text(
                             text = "Aún no tienes entregas realizadas",
-                            color = DriverMuted,
+                            color = colors.muted,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(top = 24.dp)
@@ -159,7 +221,10 @@ fun MisEntregasScreen(navController: NavController) {
 
                 else -> {
                     items(entregas) { entrega ->
-                        EntregaHistorialCardRediseñada(entrega)
+                        EntregaHistorialCardRediseñada(
+                            colors = colors,
+                            entrega = entrega
+                        )
                     }
                 }
             }
@@ -167,14 +232,14 @@ fun MisEntregasScreen(navController: NavController) {
 
         Text(
             text = "MIS ENTREGAS",
-            color = Color(0xFFB0BAD0),
+            color = colors.bottomText,
             fontSize = 12.sp,
             fontWeight = FontWeight.Black,
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color.White)
+                .background(colors.bottomBar)
                 .padding(vertical = 7.dp),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            textAlign = TextAlign.Center
         )
     }
 }
@@ -188,9 +253,23 @@ private fun HeaderMisEntregas(
             .fillMaxWidth()
             .height(150.dp)
             .background(
-                Brush.linearGradient(
-                    listOf(DriverBlueDark, DriverBlue, DriverBlueMid)
-                )
+                if (ThemeManager.isDarkMode.value) {
+                    Brush.linearGradient(
+                        listOf(
+                            Color(0xFF020617),
+                            Color(0xFF0F172A),
+                            Color(0xFF1E293B)
+                        )
+                    )
+                } else {
+                    Brush.linearGradient(
+                        listOf(
+                            DriverBlueDark,
+                            DriverBlue,
+                            DriverBlueMid
+                        )
+                    )
+                }
             )
             .statusBarsPadding()
             .padding(horizontal = 16.dp)
@@ -242,6 +321,7 @@ private fun HeaderMisEntregas(
 
 @Composable
 private fun EstadisticasEntregas(
+    colors: DriverColors,
     entregas: Int,
     ganado: Double,
     kilometros: Double
@@ -252,8 +332,9 @@ private fun EstadisticasEntregas(
             .padding(horizontal = 14.dp)
             .padding(top = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
-    )  {
+    ) {
         StatBox(
+            colors = colors,
             value = entregas.toString(),
             label = "Este mes",
             color = DriverBlue,
@@ -261,6 +342,7 @@ private fun EstadisticasEntregas(
         )
 
         StatBox(
+            colors = colors,
             value = "S/ ${String.format("%.0f", ganado)}",
             label = "Ganado",
             color = Color(0xFF059669),
@@ -268,6 +350,7 @@ private fun EstadisticasEntregas(
         )
 
         StatBox(
+            colors = colors,
             value = String.format("%.1f", kilometros),
             label = "Km totales",
             color = Color(0xFFF97316),
@@ -278,6 +361,7 @@ private fun EstadisticasEntregas(
 
 @Composable
 private fun StatBox(
+    colors: DriverColors,
     value: String,
     label: String,
     color: Color,
@@ -286,8 +370,8 @@ private fun StatBox(
     Card(
         modifier = modifier.height(90.dp),
         shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.5.dp, DriverBorder),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        border = BorderStroke(1.5.dp, colors.border),
+        colors = CardDefaults.cardColors(containerColor = colors.card)
     ) {
         Column(
             modifier = Modifier
@@ -308,7 +392,7 @@ private fun StatBox(
 
             Text(
                 text = label.uppercase(),
-                color = DriverMuted,
+                color = colors.muted,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.ExtraBold,
                 lineHeight = 12.sp
@@ -318,12 +402,15 @@ private fun StatBox(
 }
 
 @Composable
-private fun EntregaHistorialCardRediseñada(entrega: EntregaItem) {
+private fun EntregaHistorialCardRediseñada(
+    colors: DriverColors,
+    entrega: EntregaItem
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.5.dp, DriverBorder),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        border = BorderStroke(1.5.dp, colors.border),
+        colors = CardDefaults.cardColors(containerColor = colors.card)
     ) {
         Column(
             modifier = Modifier.padding(14.dp)
@@ -333,7 +420,7 @@ private fun EntregaHistorialCardRediseñada(entrega: EntregaItem) {
                     modifier = Modifier
                         .size(44.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFFE8EFFE)),
+                        .background(colors.personBg),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -348,6 +435,7 @@ private fun EntregaHistorialCardRediseñada(entrega: EntregaItem) {
 
                 Column(modifier = Modifier.weight(1f)) {
                     EntregaRouteRow(
+                        colors = colors,
                         color = DriverGreen,
                         text = entrega.pickupAddress,
                         strong = true
@@ -358,10 +446,11 @@ private fun EntregaHistorialCardRediseñada(entrega: EntregaItem) {
                             .padding(start = 4.5.dp, top = 3.dp, bottom = 3.dp)
                             .width(1.5.dp)
                             .height(12.dp)
-                            .background(DriverBorder)
+                            .background(colors.border)
                     )
 
                     EntregaRouteRow(
+                        colors = colors,
                         color = DriverRed,
                         text = entrega.dropoffAddress,
                         strong = false
@@ -382,27 +471,32 @@ private fun EntregaHistorialCardRediseñada(entrega: EntregaItem) {
                     fontWeight = FontWeight.Black
                 )
 
-                MetaDotEntrega()
+                MetaDotEntrega(colors)
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.LocationOn,
                         contentDescription = null,
-                        tint = DriverMuted,
+                        tint = colors.muted,
                         modifier = Modifier.size(15.dp)
                     )
+
                     Spacer(modifier = Modifier.width(3.dp))
+
                     Text(
                         text = "${entrega.distanciaKm} km",
-                        color = DriverMuted,
+                        color = colors.muted,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.ExtraBold
                     )
                 }
 
-                MetaDotEntrega()
+                MetaDotEntrega(colors)
 
-                PagoEntregaBadge(entrega.metodoPago)
+                PagoEntregaBadge(
+                    colors = colors,
+                    payment = entrega.metodoPago
+                )
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -411,7 +505,7 @@ private fun EntregaHistorialCardRediseñada(entrega: EntregaItem) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(DriverBg)
+                    .background(colors.divider)
             )
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -424,12 +518,12 @@ private fun EntregaHistorialCardRediseñada(entrega: EntregaItem) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50.dp))
-                        .background(Color(0xFFD1FAE5))
+                        .background(colors.successBg)
                         .padding(horizontal = 12.dp, vertical = 5.dp)
                 ) {
                     Text(
                         text = "Entregado",
-                        color = Color(0xFF065F46),
+                        color = colors.successText,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Black
                     )
@@ -437,7 +531,7 @@ private fun EntregaHistorialCardRediseñada(entrega: EntregaItem) {
 
                 Text(
                     text = entrega.fechaEntrega,
-                    color = Color(0xFFB0BAD0),
+                    color = colors.bottomText,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -448,6 +542,7 @@ private fun EntregaHistorialCardRediseñada(entrega: EntregaItem) {
 
 @Composable
 private fun EntregaRouteRow(
+    colors: DriverColors,
     color: Color,
     text: String,
     strong: Boolean
@@ -465,7 +560,7 @@ private fun EntregaRouteRow(
 
         Text(
             text = text,
-            color = DriverText,
+            color = colors.text,
             fontSize = 14.sp,
             lineHeight = 18.sp,
             fontWeight = if (strong) FontWeight.ExtraBold else FontWeight.Bold,
@@ -476,28 +571,33 @@ private fun EntregaRouteRow(
 }
 
 @Composable
-private fun MetaDotEntrega() {
+private fun MetaDotEntrega(
+    colors: DriverColors
+) {
     Box(
         modifier = Modifier
             .size(4.dp)
             .clip(CircleShape)
-            .background(Color(0xFFB0BAD0))
+            .background(colors.bottomText)
     )
 }
 
 @Composable
-private fun PagoEntregaBadge(payment: String) {
+private fun PagoEntregaBadge(
+    colors: DriverColors,
+    payment: String
+) {
     val isBcp = payment.equals("BCP", ignoreCase = true)
 
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(50.dp))
-            .background(if (isBcp) Color(0xFFFFF4E8) else Color(0xFFE8EFFE))
+            .background(if (isBcp) colors.bcpBg else colors.personBg)
             .padding(horizontal = 10.dp, vertical = 4.dp)
     ) {
         Text(
             text = payment,
-            color = if (isBcp) Color(0xFFD97706) else DriverBlue,
+            color = if (isBcp) colors.bcpText else DriverBlue,
             fontSize = 12.sp,
             fontWeight = FontWeight.Black
         )

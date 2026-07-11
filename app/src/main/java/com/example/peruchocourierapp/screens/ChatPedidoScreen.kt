@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -72,16 +73,38 @@ import retrofit2.Response
 import java.io.File
 import kotlin.math.pow
 
-private val CNegro = Color(0xFF111111)
+
 private val CAzul = Color(0xFF1A4FBF)
 private val CAzulOscuro = Color(0xFF0D3280)
 private val CRojo = Color(0xFFE02020)
 private val CRojoOscuro = Color(0xFFB91C1C)
 private val CVerde = Color(0xFF22C55E)
-private val CBlancoMsg = Color(0xFFFFFFFF)
-private val CGrisFondo = Color(0xFFF5F5F5)
-private val CGrisBorde = Color(0xFFF0F0F0)
-private val CMuted = Color(0xFF888888)
+
+@Composable
+private fun chatColors(): ChatColors {
+    val dark = MaterialTheme.colorScheme.background == Color(0xFF101010) ||
+            MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+    return ChatColors(
+        background = if (dark) Color(0xFF0F172A) else Color.White,
+        surface = if (dark) Color(0xFF111827) else Color.White,
+        inputBg = if (dark) Color(0xFF1F2937) else Color(0xFFF5F5F5),
+        border = if (dark) Color(0xFF334155) else Color(0xFFF0F0F0),
+        text = if (dark) Color.White else Color(0xFF111111),
+        muted = if (dark) Color(0xFFCBD5E1) else Color(0xFF888888),
+        receivedBubble = if (dark) Color(0xFF1E293B) else Color.White
+    )
+}
+
+private data class ChatColors(
+    val background: Color,
+    val surface: Color,
+    val inputBg: Color,
+    val border: Color,
+    val text: Color,
+    val muted: Color,
+    val receivedBubble: Color
+)
 
 private enum class TipoBurbuja {
     ENVIADO,
@@ -106,6 +129,7 @@ fun ChatPedidoScreen(
     receiverEmail: String
 ) {
     val context = LocalContext.current
+    val colors = chatColors()
     val sessionManager = SessionManager(context)
     val keyboard = LocalSoftwareKeyboardController.current
     val listState = rememberLazyListState()
@@ -473,7 +497,7 @@ fun ChatPedidoScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(colors.background)
             .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding()
@@ -492,7 +516,7 @@ fun ChatPedidoScreen(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .background(CGrisFondo)
+                .background(chatColors().inputBg)
         ) {
             when {
                 isLoading -> {
@@ -635,6 +659,8 @@ private fun ImagenZoomDialog(
     imageUrl: String,
     onDismiss: () -> Unit
 ) {
+    val colors = chatColors()
+
     var scale by remember(imageUrl) { mutableStateOf(1f) }
     var offset by remember(imageUrl) { mutableStateOf(Offset.Zero) }
 
@@ -746,10 +772,12 @@ private fun ChatTopBar(
     onBack: () -> Unit,
     onCallClick: () -> Unit
 ) {
+    val colors = chatColors()
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White)
+            .background(chatColors().surface)
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -757,7 +785,7 @@ private fun ChatTopBar(
             modifier = Modifier
                 .size(34.dp)
                 .clip(CircleShape)
-                .background(CGrisFondo),
+                .background(chatColors().inputBg),
             contentAlignment = Alignment.Center
         ) {
             IconButton(
@@ -767,7 +795,7 @@ private fun ChatTopBar(
                 Icon(
                     imageVector = Icons.Default.ArrowBack,
                     contentDescription = "Volver",
-                    tint = CNegro,
+                    tint = chatColors().text,
                     modifier = Modifier.size(19.dp)
                 )
             }
@@ -780,7 +808,7 @@ private fun ChatTopBar(
                 text = "Chat del pedido",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = CNegro
+                color = chatColors().text
             )
 
             Row(
@@ -797,7 +825,7 @@ private fun ChatTopBar(
                 Text(
                     text = orderInfo,
                     fontSize = 11.sp,
-                    color = CMuted,
+                    color = chatColors().muted,
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -847,7 +875,7 @@ private fun ChatTopBar(
                 modifier = Modifier
                     .size(30.dp)
                     .clip(CircleShape)
-                    .background(Color.White)
+                    .background(chatColors().surface)
                     .align(Alignment.CenterEnd),
                 contentAlignment = Alignment.Center
             ) {
@@ -870,7 +898,7 @@ private fun ChatTopBar(
     }
 
     HorizontalDivider(
-        color = CGrisBorde,
+        color = chatColors().border,
         thickness = 1.dp
     )
 }
@@ -880,6 +908,8 @@ private fun MensajeEnviado(
     msg: ChatMensajeUi,
     onImageClick: (String) -> Unit
 ) {
+    val colors = chatColors()
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End,
@@ -928,12 +958,12 @@ private fun MensajeEnviado(
                 horizontalArrangement = Arrangement.spacedBy(3.dp),
                 modifier = Modifier.padding(top = 3.dp, end = 2.dp)
             ) {
-                Text(text = msg.hora, fontSize = 10.sp, color = CMuted)
+                Text(text = msg.hora, fontSize = 10.sp, color = chatColors().muted)
 
                 Text(
                     text = if (msg.leido) "✓✓" else "✓",
                     fontSize = 10.sp,
-                    color = if (msg.leido) CVerde else CMuted
+                    color = if (msg.leido) CVerde else chatColors().muted
                 )
             }
         }
@@ -962,6 +992,8 @@ private fun MensajeRecibido(
     msg: ChatMensajeUi,
     onImageClick: (String) -> Unit
 ) {
+    val colors = chatColors()
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start,
@@ -990,7 +1022,7 @@ private fun MensajeRecibido(
                     text = msg.senderNombre,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    color = CMuted,
+                    color = chatColors().muted,
                     modifier = Modifier.padding(bottom = 2.dp, start = 4.dp)
                 )
             }
@@ -1002,7 +1034,7 @@ private fun MensajeRecibido(
                     bottomStart = 16.dp,
                     bottomEnd = 16.dp
                 ),
-                color = CBlancoMsg,
+                color = chatColors().receivedBubble,
                 shadowElevation = 2.dp,
                 modifier = Modifier.widthIn(max = 240.dp)
             ) {
@@ -1022,7 +1054,7 @@ private fun MensajeRecibido(
                     Text(
                         text = msg.texto,
                         fontSize = 13.sp,
-                        color = CNegro,
+                        color = chatColors().text,
                         fontWeight = FontWeight.Medium,
                         lineHeight = 18.sp,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)
@@ -1033,7 +1065,7 @@ private fun MensajeRecibido(
             Text(
                 text = msg.hora,
                 fontSize = 10.sp,
-                color = CMuted,
+                color = chatColors().muted,
                 modifier = Modifier.padding(top = 3.dp, start = 4.dp)
             )
         }
@@ -1049,9 +1081,11 @@ private fun CallContactsDialog(
     onDismiss: () -> Unit,
     onCall: (String) -> Unit
 ) {
+    val colors = chatColors()
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = chatColors().surface,
         shape = RoundedCornerShape(22.dp),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1066,7 +1100,7 @@ private fun CallContactsDialog(
 
                 Text(
                     text = "Llamar",
-                    color = CNegro,
+                    color = chatColors().text,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Black
                 )
@@ -1097,7 +1131,7 @@ private fun CallContactsDialog(
                     if (telefonoRemitente.isBlank() && telefonoDestinatario.isBlank()) {
                         Text(
                             text = "No hay números disponibles para este pedido.",
-                            color = CMuted,
+                            color = chatColors().muted,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -1112,7 +1146,7 @@ private fun CallContactsDialog(
                     } else {
                         Text(
                             text = "Aún no hay número disponible del repartidor.",
-                            color = CMuted,
+                            color = chatColors().muted,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -1138,6 +1172,8 @@ private fun CallContactOption(
     phone: String,
     onClick: () -> Unit
 ) {
+    val colors = chatColors()
+
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(16.dp),
@@ -1172,14 +1208,14 @@ private fun CallContactOption(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    color = CNegro,
+                    color = chatColors().text,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Black
                 )
 
                 Text(
                     text = phone,
-                    color = CMuted,
+                    color = chatColors().muted,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -1197,10 +1233,12 @@ private fun CallContactOption(
 
 @Composable
 private fun ChatBanner(orderInfo: String) {
+    val colors = chatColors()
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFFE8EFFE))
+            .background(if (colors.background.luminance() < 0.5f) Color(0xFF102A5C) else Color(0xFFE8EFFE))
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1225,6 +1263,8 @@ private fun ChatBanner(orderInfo: String) {
 private fun EmptyChatState(
     modifier: Modifier = Modifier
 ) {
+    val colors = chatColors()
+
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally
@@ -1240,13 +1280,13 @@ private fun EmptyChatState(
             text = "Aún no hay mensajes",
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
-            color = CMuted
+            color = chatColors().muted
         )
 
         Text(
             text = "Escribe para iniciar la conversación",
             fontSize = 12.sp,
-            color = CMuted,
+            color = chatColors().muted,
             modifier = Modifier.padding(top = 3.dp)
         )
     }
@@ -1260,8 +1300,10 @@ private fun ChatInputBar(
     onSend: () -> Unit,
     onCameraClick: () -> Unit
 ) {
+    val colors = chatColors()
+
     Surface(
-        color = Color.White,
+        color = colors.surface,
         shadowElevation = 8.dp
     ) {
         Row(
@@ -1288,7 +1330,7 @@ private fun ChatInputBar(
 
             Surface(
                 shape = RoundedCornerShape(22.dp),
-                color = CGrisFondo,
+                color = chatColors().inputBg,
                 modifier = Modifier.weight(1f)
             ) {
                 TextField(
@@ -1310,12 +1352,12 @@ private fun ChatInputBar(
                         onSend = { onSend() }
                     ),
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = CGrisFondo,
-                        unfocusedContainerColor = CGrisFondo,
+                        focusedContainerColor = chatColors().inputBg,
+                        unfocusedContainerColor = chatColors().inputBg,
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent,
-                        focusedTextColor = CNegro,
-                        unfocusedTextColor = CNegro,
+                        focusedTextColor = chatColors().text,
+                        unfocusedTextColor = chatColors().text,
                         cursorColor = CAzul
                     ),
                     textStyle = androidx.compose.ui.text.TextStyle(
@@ -1327,7 +1369,7 @@ private fun ChatInputBar(
             }
 
             val sendButtonBrush = if (value.isBlank() || isSending) {
-                Brush.linearGradient(listOf(CGrisFondo, CGrisFondo))
+                Brush.linearGradient(listOf(chatColors().inputBg, chatColors().inputBg))
             } else {
                 Brush.linearGradient(listOf(CAzul, CAzulOscuro))
             }
@@ -1353,7 +1395,7 @@ private fun ChatInputBar(
                         Icon(
                             imageVector = Icons.Default.Send,
                             contentDescription = "Enviar",
-                            tint = if (value.isBlank()) CMuted else Color.White,
+                            tint = if (value.isBlank()) chatColors().muted else Color.White,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -1365,8 +1407,10 @@ private fun ChatInputBar(
 
 @Composable
 private fun ChatClosedBar() {
+    val colors = chatColors()
+
     Surface(
-        color = Color.White,
+        color = chatColors().surface,
         shadowElevation = 8.dp
     ) {
         Row(
@@ -1397,7 +1441,7 @@ private fun ChatClosedBar() {
 
                 Text(
                     text = "El pedido ya fue entregado. No se pueden enviar más mensajes.",
-                    color = CMuted,
+                    color = chatColors().muted,
                     fontSize = 11.sp
                 )
             }
@@ -1407,6 +1451,8 @@ private fun ChatClosedBar() {
 
 @Composable
 private fun ChatCerradoMensaje() {
+    val colors = chatColors()
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1419,7 +1465,7 @@ private fun ChatCerradoMensaje() {
         ) {
             Text(
                 text = "Pedido finalizado. Este chat quedó solo para lectura.",
-                color = CMuted,
+                color = chatColors().muted,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
@@ -1503,6 +1549,8 @@ private fun EstadoPedidoChatBubble(
     texto: String,
     subtitulo: String
 ) {
+    val colors = chatColors()
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1511,7 +1559,7 @@ private fun EstadoPedidoChatBubble(
     ) {
         Surface(
             shape = RoundedCornerShape(14.dp),
-            color = Color.White,
+            color = chatColors().surface,
             shadowElevation = 3.dp
         ) {
             Row(
@@ -1521,14 +1569,14 @@ private fun EstadoPedidoChatBubble(
                 Column {
                     Text(
                         text = texto,
-                        color = CNegro,
+                        color = chatColors().text,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
 
                     Text(
                         text = subtitulo,
-                        color = CMuted,
+                        color = chatColors().muted,
                         fontSize = 12.sp
                     )
                 }

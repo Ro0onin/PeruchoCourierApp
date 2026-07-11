@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -36,6 +37,7 @@ import com.example.peruchocourierapp.api.RetrofitClient
 import com.example.peruchocourierapp.models.BasicResponse
 import com.example.peruchocourierapp.models.GetOrdersResponse
 import com.example.peruchocourierapp.models.Order
+import com.example.peruchocourierapp.theme.ThemeManager
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -50,10 +52,69 @@ private val DriverBorder = Color(0xFFE8ECF4)
 private val DriverGreen = Color(0xFF22C55E)
 private val DriverRed = Color(0xFFE02020)
 
+private data class AvailableOrdersColors(
+    val screenBg: Color,
+    val cardBg: Color,
+    val fieldBg: Color,
+    val border: Color,
+    val text: Color,
+    val muted: Color,
+    val subtleText: Color,
+    val iconSoftBg: Color,
+    val emptyPhotoBg: Color,
+    val paymentBg: Color,
+    val bcpBg: Color,
+    val bcpText: Color,
+    val errorText: Color,
+    val dialogBg: Color
+)
+
+@Composable
+private fun availableOrdersColors(): AvailableOrdersColors {
+    val dark = ThemeManager.isDarkMode.value
+
+    return if (dark) {
+        AvailableOrdersColors(
+            screenBg = Color(0xFF0F172A),
+            cardBg = Color(0xFF111827),
+            fieldBg = Color(0xFF1F2937),
+            border = Color(0xFF334155),
+            text = Color(0xFFF8FAFC),
+            muted = Color(0xFFCBD5E1),
+            subtleText = Color(0xFF94A3B8),
+            iconSoftBg = Color(0xFF172554),
+            emptyPhotoBg = Color(0xFF1F2937),
+            paymentBg = Color(0xFF172554),
+            bcpBg = Color(0xFF451A03),
+            bcpText = Color(0xFFFBBF24),
+            errorText = Color(0xFFFFB4B4),
+            dialogBg = Color(0xFF111827)
+        )
+    } else {
+        AvailableOrdersColors(
+            screenBg = DriverBg,
+            cardBg = Color.White,
+            fieldBg = Color(0xFFF9FAFB),
+            border = DriverBorder,
+            text = DriverText,
+            muted = DriverMuted,
+            subtleText = Color(0xFFB0BAD0),
+            iconSoftBg = Color(0xFFE8EFFE),
+            emptyPhotoBg = Color(0xFFF4F6FB),
+            paymentBg = Color(0xFFE8EFFE),
+            bcpBg = Color(0xFFFFF4E8),
+            bcpText = Color(0xFFD97706),
+            errorText = DriverRed,
+            dialogBg = Color.White
+        )
+    }
+}
+
 @Composable
 fun PedidosDisponiblesScreen(navController: NavController) {
     val context = LocalContext.current
     val sessionManager = SessionManager(context)
+    val colors = availableOrdersColors()
 
     var orders by remember { mutableStateOf<List<Order>>(emptyList()) }
     var errorMessage by remember { mutableStateOf("") }
@@ -142,7 +203,7 @@ fun PedidosDisponiblesScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(DriverBg)
+            .background(colors.screenBg)
             .navigationBarsPadding()
     ) {
         HeaderPedidosDisponibles(
@@ -175,7 +236,7 @@ fun PedidosDisponiblesScreen(navController: NavController) {
                     item {
                         Text(
                             text = errorMessage,
-                            color = DriverRed,
+                            color = colors.errorText,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier
@@ -189,7 +250,7 @@ fun PedidosDisponiblesScreen(navController: NavController) {
                     item {
                         Text(
                             text = "No hay pedidos disponibles",
-                            color = DriverMuted,
+                            color = colors.muted,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier
@@ -202,6 +263,7 @@ fun PedidosDisponiblesScreen(navController: NavController) {
                 else -> {
                     items(orders) { order ->
                         PedidoDisponibleCard(
+                            colors = colors,
                             order = order,
                             isAccepting = acceptingOrderId == order.id,
                             onAccept = { aceptarPedido(order) }
@@ -234,8 +296,19 @@ fun PedidosDisponiblesScreen(navController: NavController) {
     if (showErrorDialog) {
         AlertDialog(
             onDismissRequest = { showErrorDialog = false },
-            title = { Text("No se pudo aceptar") },
-            text = { Text(errorMessage) },
+            title = {
+                Text(
+                    text = "No se pudo aceptar",
+                    color = colors.text,
+                    fontWeight = FontWeight.Black
+                )
+            },
+            text = {
+                Text(
+                    text = errorMessage,
+                    color = colors.muted
+                )
+            },
             confirmButton = {
                 Button(
                     onClick = { showErrorDialog = false },
@@ -243,7 +316,8 @@ fun PedidosDisponiblesScreen(navController: NavController) {
                 ) {
                     Text("Entendido")
                 }
-            }
+            },
+            containerColor = colors.dialogBg
         )
     }
 }
@@ -258,9 +332,19 @@ private fun HeaderPedidosDisponibles(
             .fillMaxWidth()
             .height(90.dp)
             .background(
-                Brush.linearGradient(
-                    listOf(DriverBlueDark, DriverBlue, DriverBlueMid)
-                )
+                if (ThemeManager.isDarkMode.value) {
+                    Brush.linearGradient(
+                        listOf(
+                            Color(0xFF0F172A),
+                            Color(0xFF111827),
+                            Color(0xFF1E293B)
+                        )
+                    )
+                } else {
+                    Brush.linearGradient(
+                        listOf(DriverBlueDark, DriverBlue, DriverBlueMid)
+                    )
+                }
             )
             .statusBarsPadding()
             .padding(horizontal = 16.dp)
@@ -316,6 +400,7 @@ private fun HeaderPedidosDisponibles(
 
 @Composable
 private fun PedidoDisponibleCard(
+    colors: AvailableOrdersColors,
     order: Order,
     isAccepting: Boolean,
     onAccept: () -> Unit
@@ -323,8 +408,8 @@ private fun PedidoDisponibleCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.5.dp, DriverBorder),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        border = BorderStroke(1.5.dp, colors.border),
+        colors = CardDefaults.cardColors(containerColor = colors.cardBg)
     ) {
         Column(
             modifier = Modifier.padding(14.dp)
@@ -334,7 +419,7 @@ private fun PedidoDisponibleCard(
                     modifier = Modifier
                         .size(44.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFFE8EFFE)),
+                        .background(colors.iconSoftBg),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -349,6 +434,7 @@ private fun PedidoDisponibleCard(
 
                 Column(modifier = Modifier.weight(1f)) {
                     RouteRow(
+                        colors = colors,
                         color = DriverGreen,
                         text = order.pickup_address ?: "Recojo no disponible",
                         strong = true
@@ -359,10 +445,11 @@ private fun PedidoDisponibleCard(
                             .padding(start = 4.5.dp, top = 3.dp, bottom = 3.dp)
                             .width(1.5.dp)
                             .height(12.dp)
-                            .background(DriverBorder)
+                            .background(colors.border)
                     )
 
                     RouteRow(
+                        colors = colors,
                         color = DriverRed,
                         text = order.dropoff_address ?: "Entrega no disponible",
                         strong = false
@@ -383,13 +470,13 @@ private fun PedidoDisponibleCard(
                     fontWeight = FontWeight.Black
                 )
 
-                MetaDot()
+                MetaDot(colors)
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.LocationOn,
                         contentDescription = null,
-                        tint = DriverMuted,
+                        tint = colors.muted,
                         modifier = Modifier.size(15.dp)
                     )
 
@@ -397,22 +484,25 @@ private fun PedidoDisponibleCard(
 
                     Text(
                         text = "${order.distancia_km ?: "-"} km",
-                        color = DriverMuted,
+                        color = colors.muted,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.ExtraBold
                     )
                 }
 
-                MetaDot()
+                MetaDot(colors)
 
-                PaymentBadge(order.metodo_pago ?: "-")
+                PaymentBadge(
+                    colors = colors,
+                    payment = order.metodo_pago ?: "-"
+                )
             }
 
             Spacer(modifier = Modifier.height(14.dp))
 
             Text(
                 text = "Producto a recoger",
-                color = DriverMuted,
+                color = colors.muted,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -437,12 +527,12 @@ private fun PedidoDisponibleCard(
                         .fillMaxWidth()
                         .height(86.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFF4F6FB)),
+                        .background(colors.emptyPhotoBg),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = "El cliente no adjuntó foto",
-                        color = DriverMuted,
+                        color = colors.muted,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -460,7 +550,9 @@ private fun PedidoDisponibleCard(
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = DriverBlue,
-                    contentColor = Color.White
+                    contentColor = Color.White,
+                    disabledContainerColor = colors.border,
+                    disabledContentColor = colors.muted
                 )
             ) {
                 Icon(
@@ -493,6 +585,7 @@ private fun obtenerUrlFotoPaquete(foto: String?): String? {
 
 @Composable
 private fun RouteRow(
+    colors: AvailableOrdersColors,
     color: Color,
     text: String,
     strong: Boolean
@@ -510,7 +603,7 @@ private fun RouteRow(
 
         Text(
             text = text,
-            color = DriverText,
+            color = colors.text,
             fontSize = 14.sp,
             lineHeight = 18.sp,
             fontWeight = if (strong) FontWeight.ExtraBold else FontWeight.Bold,
@@ -521,28 +614,33 @@ private fun RouteRow(
 }
 
 @Composable
-private fun MetaDot() {
+private fun MetaDot(
+    colors: AvailableOrdersColors
+) {
     Box(
         modifier = Modifier
             .size(4.dp)
             .clip(CircleShape)
-            .background(Color(0xFFB0BAD0))
+            .background(colors.subtleText)
     )
 }
 
 @Composable
-private fun PaymentBadge(payment: String) {
+private fun PaymentBadge(
+    colors: AvailableOrdersColors,
+    payment: String
+) {
     val isBcp = payment.equals("BCP", ignoreCase = true)
 
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(50.dp))
-            .background(if (isBcp) Color(0xFFFFF4E8) else Color(0xFFE8EFFE))
+            .background(if (isBcp) colors.bcpBg else colors.paymentBg)
             .padding(horizontal = 10.dp, vertical = 4.dp)
     ) {
         Text(
             text = payment,
-            color = if (isBcp) Color(0xFFD97706) else DriverBlue,
+            color = if (isBcp) colors.bcpText else DriverBlue,
             fontSize = 12.sp,
             fontWeight = FontWeight.Black
         )

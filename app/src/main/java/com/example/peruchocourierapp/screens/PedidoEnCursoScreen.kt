@@ -63,7 +63,15 @@ import android.graphics.Canvas
 import com.google.android.gms.maps.model.BitmapDescriptor
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import android.content.Context
+import androidx.core.content.FileProvider
 import com.example.peruchocourierapp.R
+import com.example.peruchocourierapp.theme.ThemeManager
+import com.google.android.gms.maps.model.MapStyleOptions
+import okhttp3.MultipartBody
+import java.io.File
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 
 
 private val DriverBlue = Color(0xFF1A4FBF)
@@ -74,6 +82,86 @@ private val DriverBorder = Color(0xFFE8ECF4)
 private val DriverGreen = Color(0xFF22C55E)
 private val DriverRed = Color(0xFFE02020)
 private val LimaDefault = LatLng(-12.0464, -77.0428)
+
+
+private data class PedidoCursoColors(
+    val background: Color,
+    val bottomSheet: Color,
+    val card: Color,
+    val infoBox: Color,
+    val text: Color,
+    val muted: Color,
+    val border: Color,
+    val mapLoadingBg: Color,
+    val mapButtonBg: Color,
+    val disabledBg: Color,
+    val disabledText: Color,
+    val blueSoft: Color,
+    val greenSoft: Color,
+    val greenText: Color,
+    val orangeSoft: Color,
+    val orangeText: Color,
+    val completedMessageBg: Color,
+    val completedMessageText: Color,
+    val statCardBg: Color,
+    val dialogBg: Color
+
+)
+
+@Composable
+private fun pedidoCursoColors(): PedidoCursoColors {
+    val dark = ThemeManager.isDarkMode.value
+
+
+    return if (dark) {
+        PedidoCursoColors(
+            background = Color(0xFF0F172A),
+            bottomSheet = Color(0xFF111827),
+            card = Color(0xFF111827),
+            infoBox = Color(0xFF1F2937),
+            text = Color(0xFFF8FAFC),
+            muted = Color(0xFFCBD5E1),
+            border = Color(0xFF334155),
+            mapLoadingBg = Color(0xFF0F172A),
+            mapButtonBg = Color(0xFF111827).copy(alpha = 0.92f),
+            disabledBg = Color(0xFF334155),
+            disabledText = Color(0xFF94A3B8),
+            blueSoft = Color(0xFF172554),
+            greenSoft = Color(0xFF14532D),
+            greenText = Color(0xFFDCFCE7),
+            orangeSoft = Color(0xFF451A03),
+            orangeText = Color(0xFFFBBF24),
+            completedMessageBg = Color(0xFF052E1C),
+            completedMessageText = Color(0xFFDCFCE7),
+            statCardBg = Color(0xFF1F2937),
+            dialogBg = Color(0xFF111827)
+        )
+    } else {
+        PedidoCursoColors(
+            background = DriverBg,
+            bottomSheet = DriverBg,
+            card = Color.White,
+            infoBox = Color.White,
+            text = DriverText,
+            muted = DriverMuted,
+            border = DriverBorder,
+            mapLoadingBg = Color.White,
+            mapButtonBg = Color.White.copy(alpha = 0.92f),
+            disabledBg = Color(0xFFE5E7EB),
+            disabledText = Color(0xFF9CA3AF),
+            blueSoft = Color(0xFFE8EFFE),
+            greenSoft = Color(0xFFD1FAE5),
+            greenText = Color(0xFF065F46),
+            orangeSoft = Color(0xFFFFF4E8),
+            orangeText = Color(0xFFD97706),
+            completedMessageBg = Color(0xFFF0FFF4),
+            completedMessageText = Color(0xFF065F46),
+            statCardBg = Color(0xFFF9FAFB),
+            dialogBg = Color.White
+        )
+    }
+
+}
 
 private fun normalizarEstadoPedido(estado: String?): String {
     return when ((estado ?: "").trim().lowercase()) {
@@ -99,8 +187,10 @@ fun PedidoEnCursoScreen(
     navController: NavController,
     driverEmailParam: String = ""
 ) {
+
     val context = LocalContext.current
     val sessionManager = SessionManager(context)
+    val colors = pedidoCursoColors()
 
     val driverEmail = remember(driverEmailParam) {
         driverEmailParam.ifBlank {
@@ -265,12 +355,13 @@ fun PedidoEnCursoScreen(
         }
     }
 
-    fun iniciarServicioUbicacion(orderId: Int) {
+    fun iniciarServicioUbicacion(orderId: Int, tiempoEstimadoMin: Int) {
         if (orderId <= 0 || driverEmail.isBlank()) return
 
         val serviceIntent = Intent(context, LocationForegroundService::class.java).apply {
             putExtra("order_id", orderId)
             putExtra("driver_email", driverEmail)
+            putExtra("tiempo_estimado_min", tiempoEstimadoMin)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -321,6 +412,100 @@ fun PedidoEnCursoScreen(
                     errorMessage = "Error de conexión: ${t.message}"
                 }
             })
+    }
+    var fotoEntregaFile by remember { mutableStateOf<File?>(null) }
+    var fotoEntregaUri by remember { mutableStateOf<Uri?>(null) }
+
+    fun crearArchivoFotoEntrega(): Pair<File, Uri> {
+        val file = File(
+            context.cacheDir,
+            "entrega_${System.currentTimeMillis()}.jpg"
+        )
+
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+
+        return Pair(file, uri)
+    }
+
+    fun subirFotoYEntregar(file: File) {
+        val orderId = activeOrder?.id ?: return
+
+        isUpdating = true
+
+        val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+
+        val fotoPart = MultipartBody.Part.createFormData(
+            "foto_entrega",
+            file.name,
+            requestFile
+        )
+
+        RetrofitClient.instance.uploadDeliveryPhoto(
+            orderId.toString().toRequestBody("text/plain".toMediaTypeOrNull()),
+            driverEmail.toRequestBody("text/plain".toMediaTypeOrNull()),
+            fotoPart
+        ).enqueue(object : Callback<BasicResponse> {
+            override fun onResponse(
+                call: Call<BasicResponse>,
+                response: Response<BasicResponse>
+            ) {
+                isUpdating = false
+
+                val result = response.body()
+
+                if (response.isSuccessful && result?.success == true) {
+                    detenerServicioUbicacion()
+                    gananciaPedido = activeOrder?.total ?: "0.00"
+                    showPedidoCompletadoDialog = true
+                } else {
+                    errorMessage = result?.message ?: "No se pudo subir la foto de entrega"
+                }
+            }
+
+            override fun onFailure(call: Call<BasicResponse>, t: Throwable) {
+                isUpdating = false
+                errorMessage = "Error subiendo foto: ${t.message}"
+            }
+        })
+    }
+
+    val cameraEntregaLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        val file = fotoEntregaFile
+
+        if (success && file != null && file.exists() && file.length() > 0L) {
+            subirFotoYEntregar(file)
+        } else {
+            fotoEntregaFile = null
+            fotoEntregaUri = null
+            errorMessage = "Debes tomar una foto para completar la entrega"
+        }
+    }
+
+    fun abrirCamaraEntrega() {
+        val orderId = activeOrder?.id
+
+        if (orderId == null || orderId <= 0) {
+            errorMessage = "Pedido inválido"
+            return
+        }
+
+        if (driverEmail.isBlank()) {
+            errorMessage = "Sesión inválida. Cierra sesión e inicia nuevamente."
+            return
+        }
+
+        if (isUpdating) return
+
+        val (file, uri) = crearArchivoFotoEntrega()
+        fotoEntregaFile = file
+        fotoEntregaUri = uri
+        cameraEntregaLauncher.launch(uri)
     }
 
     fun actualizarEstado(nuevoEstado: String) {
@@ -413,7 +598,8 @@ fun PedidoEnCursoScreen(
         activeOrder?.estado,
         driverEmail,
         hasLocationPermission,
-        hasNotificationPermission
+        hasNotificationPermission,
+        duracionMin
     ) {
         val order = activeOrder
         val estado = normalizarEstadoPedido(order?.estado)
@@ -425,7 +611,10 @@ fun PedidoEnCursoScreen(
             hasNotificationPermission &&
             estado != "entregado"
         ) {
-            iniciarServicioUbicacion(order.id)
+            iniciarServicioUbicacion(
+                order.id,
+                if (duracionMin > 0) duracionMin else 9999
+            )
         }
 
         if (estado == "entregado" || order == null) {
@@ -591,7 +780,7 @@ fun PedidoEnCursoScreen(
     BottomSheetScaffold(
         scaffoldState = scaffoldState,
         sheetPeekHeight = 145.dp,
-        sheetContainerColor = DriverBg,
+        sheetContainerColor = colors.bottomSheet,
         sheetShadowElevation = 18.dp,
         sheetShape = RoundedCornerShape(
             topStart = 26.dp,
@@ -622,7 +811,7 @@ fun PedidoEnCursoScreen(
 
                     Text(
                         text = "Pedido en curso",
-                        color = DriverText,
+                        color = colors.text,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Black
                     )
@@ -659,6 +848,9 @@ fun PedidoEnCursoScreen(
                             onConfirmarEstado = { estado ->
                                 estadoPendiente = estado
                                 showConfirmDialog = true
+                            },
+                            onMarcarEntregado = {
+                                abrirCamaraEntrega()
                             }
                         )
                     }
@@ -677,7 +869,7 @@ fun PedidoEnCursoScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.White),
+                        .background(colors.mapLoadingBg),
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator(color = DriverBlue)
@@ -698,6 +890,25 @@ fun PedidoEnCursoScreen(
                                 100
                             )
                         )
+                    }
+                    MapEffect(
+                        ThemeManager.isDarkMode.value
+                    ) { map ->
+
+                        if (ThemeManager.isDarkMode.value) {
+
+                            map.setMapStyle(
+                                MapStyleOptions.loadRawResourceStyle(
+                                    context,
+                                    com.example.peruchocourierapp.R.raw.map_style_dark
+                                )
+                            )
+
+                        } else {
+
+                            map.setMapStyle(null)
+
+                        }
                     }
 
                     if (dropPoint != null && estadoActual != "entregado") {
@@ -734,7 +945,7 @@ fun PedidoEnCursoScreen(
                     modifier = Modifier
                         .padding(16.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White.copy(alpha = 0.92f))
+                        .background(colors.mapButtonBg)
                         .align(Alignment.TopStart)
                 ) {
                     Icon(
@@ -762,7 +973,7 @@ fun PedidoEnCursoScreen(
                     modifier = Modifier
                         .padding(16.dp)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.92f))
+                        .background(colors.mapButtonBg)
                         .align(Alignment.TopEnd)
                 ) {
                     Icon(
@@ -829,7 +1040,7 @@ fun PedidoEnCursoScreen(
                         Text(
                             text = "Foto del paquete",
                             fontSize = 12.sp,
-                            color = DriverMuted,
+                            color = colors.muted,
                             fontWeight = FontWeight.Bold
                         )
 
@@ -871,7 +1082,7 @@ fun PedidoEnCursoScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color.White
+                    containerColor = colors.dialogBg
                 )
             ) {
 
@@ -943,19 +1154,21 @@ fun PedidoEnCursoScreen(
                             StatCard(
                                 value = "S/ ${gananciaPedido.ifBlank { "0.00" }}",
                                 label = "Ganado",
-                                valueColor = Color(0xFF059669),
+                                valueColor = Color(0xFF10B981),
                                 modifier = Modifier.weight(1f)
                             )
 
                             StatCard(
                                 value = activeOrder?.distancia_km ?: "--",
                                 label = "Distancia",
+                                valueColor = colors.text,
                                 modifier = Modifier.weight(1f)
                             )
 
                             StatCard(
                                 value = "${duracionMin} min",
                                 label = "Tiempo",
+                                valueColor = colors.text,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -964,13 +1177,13 @@ fun PedidoEnCursoScreen(
 
                         Card(
                             colors = CardDefaults.cardColors(
-                                containerColor = Color(0xFFF0FFF4)
+                                containerColor = colors.completedMessageBg
                             )
                         ) {
                             Text(
                                 text = "Excelente trabajo. El pedido fue entregado correctamente.",
                                 modifier = Modifier.padding(14.dp),
-                                color = Color(0xFF065F46),
+                                color = colors.completedMessageText,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
@@ -1014,8 +1227,10 @@ private fun PedidoEnCursoContenidoRedisenado(
     isUpdating: Boolean,
     duracionMin: Int,
     onVerDetalles: () -> Unit,
-    onConfirmarEstado: (String) -> Unit
+    onConfirmarEstado: (String) -> Unit,
+    onMarcarEntregado: () -> Unit
 ) {
+    val colors = pedidoCursoColors()
     val estado = normalizarEstadoPedido(activeOrder.estado)
 
     RouteLinePedido(
@@ -1045,7 +1260,7 @@ private fun PedidoEnCursoContenidoRedisenado(
     ) {
         Text(
             text = "DETALLES DE LA SOLICITUD",
-            color = DriverMuted,
+            color = colors.muted,
             fontSize = 11.sp,
             fontWeight = FontWeight.Black,
             letterSpacing = 0.4.sp
@@ -1056,12 +1271,12 @@ private fun PedidoEnCursoContenidoRedisenado(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color.White, RoundedCornerShape(12.dp))
+                .background(colors.infoBox, RoundedCornerShape(12.dp))
                 .padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
             Text(
                 text = activeOrder.descripcion ?: "Sin detalles",
-                color = DriverMuted,
+                color = colors.muted,
                 fontSize = 14.sp,
                 lineHeight = 19.sp,
                 maxLines = 4,
@@ -1105,8 +1320,9 @@ private fun PedidoEnCursoContenidoRedisenado(
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = DriverBlue,
-                disabledContainerColor = Color(0xFFE5E7EB),
-                disabledContentColor = Color(0xFF9CA3AF)
+                contentColor = Color.White,
+                disabledContainerColor = colors.disabledBg,
+                disabledContentColor = colors.disabledText
             )
         ) {
             Icon(Icons.Default.Inventory2, null, modifier = Modifier.size(18.dp))
@@ -1125,10 +1341,10 @@ private fun PedidoEnCursoContenidoRedisenado(
             enabled = !isUpdating && estado == "recogido",
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFFE8EFFE),
-                contentColor = DriverBlue,
-                disabledContainerColor = Color(0xFFE5E7EB),
-                disabledContentColor = Color(0xFF9CA3AF)
+                containerColor = DriverBlue,
+                contentColor = Color.White,
+                disabledContainerColor = colors.disabledBg,
+                disabledContentColor = colors.disabledText
             )
         ) {
             Icon(Icons.Default.PedalBike, null, modifier = Modifier.size(18.dp))
@@ -1140,17 +1356,17 @@ private fun PedidoEnCursoContenidoRedisenado(
         }
 
         Button(
-            onClick = { onConfirmarEstado("entregado") },
+            onClick = onMarcarEntregado,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp),
             enabled = !isUpdating && estado == "en_camino",
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFFD1FAE5),
-                contentColor = Color(0xFF059669),
-                disabledContainerColor = Color(0xFFE5E7EB),
-                disabledContentColor = Color(0xFF9CA3AF)
+                containerColor = Color(0xFF16A34A),
+                contentColor = Color.White,
+                disabledContainerColor = colors.disabledBg,
+                disabledContentColor = colors.disabledText
             )
         ) {
             Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(18.dp))
@@ -1170,6 +1386,7 @@ private fun RouteLinePedido(
     pickup: String,
     dropoff: String
 ) {
+    val colors = pedidoCursoColors()
     Column {
         RouteRowPedido(DriverGreen, pickup)
 
@@ -1178,7 +1395,7 @@ private fun RouteLinePedido(
                 .padding(start = 10.dp, top = 3.dp, bottom = 3.dp)
                 .width(1.5.dp)
                 .height(14.dp)
-                .background(DriverBorder)
+                .background(colors.border)
         )
 
         RouteRowPedido(DriverRed, dropoff)
@@ -1190,6 +1407,7 @@ private fun RouteRowPedido(
     color: Color,
     text: String
 ) {
+    val colors = pedidoCursoColors()
     Row(verticalAlignment = Alignment.Top) {
         Icon(
             imageVector = if (color == DriverGreen) {
@@ -1206,7 +1424,7 @@ private fun RouteRowPedido(
 
         Text(
             text = text,
-            color = DriverText,
+            color = colors.text,
             fontSize = 14.sp,
             fontWeight = FontWeight.ExtraBold,
             lineHeight = 19.sp,
@@ -1222,10 +1440,11 @@ private fun InfoBoxPedido(
     total: String,
     distanciaKm: String
 ) {
+    val colors = pedidoCursoColors()
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White, RoundedCornerShape(14.dp))
+            .background(colors.infoBox, RoundedCornerShape(14.dp))
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -1235,7 +1454,7 @@ private fun InfoBoxPedido(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(DriverBorder)
+                .background(colors.border)
         )
 
         InfoRowPedido("Distancia", "$distanciaKm km", DriverBlue)
@@ -1244,10 +1463,10 @@ private fun InfoBoxPedido(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(DriverBorder)
+                .background(colors.border)
         )
 
-        InfoRowPedido("Recargo total", "S/ $total", DriverText)
+        InfoRowPedido("Recargo total", "S/ $total", colors.text)
     }
 }
 
@@ -1257,6 +1476,7 @@ private fun InfoRowPedido(
     value: String,
     valueColor: Color
 ) {
+    val colors = pedidoCursoColors()
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1264,7 +1484,7 @@ private fun InfoRowPedido(
     ) {
         Text(
             text = label,
-            color = DriverMuted,
+            color = colors.muted,
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold
         )
@@ -1280,22 +1500,23 @@ private fun InfoRowPedido(
 
 @Composable
 private fun EstadoBadgePedido(estado: String) {
+    val colors = pedidoCursoColors()
     val estadoLower = normalizarEstadoPedido(estado)
 
     val badgeColor = when (estadoLower) {
-        "asignado" -> Color(0xFFD1FAE5)
-        "recogido" -> Color(0xFFFFF4E8)
-        "en_camino" -> Color(0xFFE8EFFE)
-        "entregado" -> Color(0xFFD1FAE5)
-        else -> Color(0xFFD1FAE5)
+        "asignado" -> colors.greenSoft
+        "recogido" -> colors.orangeSoft
+        "en_camino" -> colors.blueSoft
+        "entregado" -> colors.greenSoft
+        else -> colors.greenSoft
     }
 
     val textColor = when (estadoLower) {
-        "asignado" -> Color(0xFF065F46)
-        "recogido" -> Color(0xFFD97706)
+        "asignado" -> colors.greenText
+        "recogido" -> colors.orangeText
         "en_camino" -> DriverBlue
         "entregado" -> Color(0xFF059669)
-        else -> Color(0xFF065F46)
+        else -> colors.greenText
     }
 
     val texto = when (estadoLower) {
@@ -1306,7 +1527,7 @@ private fun EstadoBadgePedido(estado: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = "ESTADO:",
-            color = DriverMuted,
+            color = colors.muted,
             fontSize = 12.sp,
             fontWeight = FontWeight.Black
         )
@@ -1334,18 +1555,19 @@ private fun DetalleTexto(
     titulo: String,
     valor: String
 ) {
+    val colors = pedidoCursoColors()
     Column {
         Text(
             text = titulo,
             fontSize = 12.sp,
-            color = DriverMuted,
+            color = colors.muted,
             fontWeight = FontWeight.Bold
         )
 
         Text(
             text = valor,
             fontSize = 14.sp,
-            color = DriverText,
+            color = colors.text,
             fontWeight = FontWeight.SemiBold
         )
     }
@@ -1370,28 +1592,36 @@ fun StatCard(
     value: String,
     label: String,
     modifier: Modifier = Modifier,
-    valueColor: Color = Color.Black
+    valueColor: Color? = null
 ) {
+    val colors = pedidoCursoColors()
+
+    val finalValueColor = valueColor ?: colors.text
+
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFF9FAFB)
+            containerColor = colors.statCardBg
         )
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                value,
-                fontWeight = FontWeight.Bold,
-                color = valueColor
-            )
 
             Text(
-                label,
-                fontSize = 11.sp,
-                color = Color.Gray
+                text = value,
+                color = finalValueColor,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 22.sp
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            Text(
+                text = label,
+                color = colors.muted,
+                fontSize = 11.sp
             )
         }
     }

@@ -98,7 +98,6 @@ interface ApiService {
         @Part("categoria") categoria: RequestBody,
         @Part("comentarios_repartidor") comentariosRepartidor: RequestBody,
 
-        @Part("tamano_paquete") tamanoPaquete: RequestBody,
         @Part("peso_kg") pesoKg: RequestBody,
         @Part("tipo_vehiculo") tipoVehiculo: RequestBody,
         @Part("tarifa_motorizado") tarifaMotorizado: RequestBody,
@@ -167,7 +166,8 @@ interface ApiService {
         @Field("order_id") orderId: Int,
         @Field("driver_email") driverEmail: String,
         @Field("lat") lat: String,
-        @Field("lng") lng: String
+        @Field("lng") lng: String,
+        @Field("tiempo_estimado_min") tiempoEstimadoMin: Int
     ): Call<BasicResponse>
 
     @GET("get_driver_location.php")
@@ -325,6 +325,14 @@ interface ApiService {
         @Part("sender_email") senderEmail: RequestBody,
         @Part("receiver_email") receiverEmail: RequestBody,
         @Part fotoChat: MultipartBody.Part
+    ): Call<BasicResponse>
+
+    @Multipart
+    @POST("upload_delivery_photo.php")
+    fun uploadDeliveryPhoto(
+        @Part("order_id") orderId: RequestBody,
+        @Part("driver_email") driverEmail: RequestBody,
+        @Part foto_entrega: MultipartBody.Part
     ): Call<BasicResponse>
 
 

@@ -8,6 +8,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -38,6 +39,7 @@ import com.example.peruchocourierapp.R
 import com.example.peruchocourierapp.SessionManager
 import com.example.peruchocourierapp.api.RetrofitClient
 import com.example.peruchocourierapp.models.BasicResponse
+import com.example.peruchocourierapp.theme.ThemeManager
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
@@ -54,14 +56,49 @@ import java.util.Locale
 
 private val IntlBlue = Color(0xFF1A4FBF)
 private val IntlBlueDark = Color(0xFF0D3280)
-private val IntlBlueLight = Color(0xFFE8EFFE)
 private val IntlRed = Color(0xFFE02020)
-private val IntlRedLight = Color(0xFFFFF0F0)
-private val IntlGrayBg = Color(0xFFF4F6FB)
-private val IntlGrayBorder = Color(0xFFE8ECF4)
-private val IntlGrayText = Color(0xFF6B7A99)
-private val IntlGrayLight = Color(0xFFB0BAD0)
-private val IntlDark = Color(0xFF1A2340)
+
+private val IsDarkMode: Boolean
+    @Composable get() = ThemeManager.isDarkMode.value
+
+private val IntlBlueLight: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF172554) else Color(0xFFE8EFFE)
+
+private val IntlRedLight: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF3F1717) else Color(0xFFFFF0F0)
+
+private val IntlGrayBg: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF0F172A) else Color(0xFFF4F6FB)
+
+private val IntlCard: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF111827) else Color.White
+
+private val IntlFieldBg: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF1F2937) else Color(0xFFF4F6FB)
+
+private val IntlGrayBorder: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF334155) else Color(0xFFE8ECF4)
+
+private val IntlGrayText: Color
+    @Composable get() = if (IsDarkMode) Color(0xFFCBD5E1) else Color(0xFF6B7A99)
+
+private val IntlGrayLight: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF94A3B8) else Color(0xFFB0BAD0)
+
+private val IntlDark: Color
+    @Composable get() = if (IsDarkMode) Color(0xFFF8FAFC) else Color(0xFF1A2340)
+
+private val IntlInfoBg: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF172554) else Color(0xFFF2F6FF)
+
+private val IntlSuccessBg: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF14532D) else Color(0xFFF0FFF4)
+
+private val IntlSuccessText: Color
+    @Composable get() = if (IsDarkMode) Color(0xFFDCFCE7) else Color(0xFF065F46)
+
+private val IntlStatBg: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF1F2937) else Color(0xFFF9FAFB)
 
 fun String.toPlainRequestBody(): RequestBody {
     return this.toRequestBody("text/plain".toMediaTypeOrNull())
@@ -263,7 +300,7 @@ fun PedidoInternacionalScreen(navController: NavController) {
             if (errorMessage.isNotBlank()) {
                 Text(
                     text = errorMessage,
-                    color = if (errorMessage.contains("✅")) Color(0xFF2E7D32) else IntlRed,
+                    color = if (errorMessage.contains("✅")) IntlSuccessText else IntlRed,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 4.dp)
@@ -504,7 +541,7 @@ fun PedidoInternacionalScreen(navController: NavController) {
                     )
                 }
             },
-            containerColor = Color.White,
+            containerColor = IntlCard,
             shape = RoundedCornerShape(20.dp)
         )
     }
@@ -594,7 +631,7 @@ private fun InfoBanner() {
             .padding(horizontal = 14.dp)
             .padding(top = 12.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White)
+            .background(IntlCard)
             .padding(12.dp),
         verticalAlignment = Alignment.Top
     ) {
@@ -637,7 +674,7 @@ private fun IntlSectionCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color.White)
+            .background(IntlCard)
             .padding(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -745,7 +782,7 @@ private fun TrackingInfoHintCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFFF2F6FF))
+            .background(IntlInfoBg)
             .clickable { onClick() }
             .padding(14.dp),
         verticalAlignment = Alignment.Top
@@ -798,7 +835,7 @@ private fun TrackingHelpDialog(
                 .fillMaxWidth()
                 .heightIn(max = 720.dp),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White)
+            colors = CardDefaults.cardColors(containerColor = IntlCard)
         ) {
             Column(
                 modifier = Modifier
@@ -1139,7 +1176,7 @@ private fun PdfSelectorRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(Color.White)
+            .background(IntlCard)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1191,9 +1228,9 @@ private fun PdfSelectorRow(
 
 @Composable
 private fun intlFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedContainerColor = IntlGrayBg,
-    unfocusedContainerColor = IntlGrayBg,
-    disabledContainerColor = IntlGrayBg,
+    focusedContainerColor = IntlFieldBg,
+    unfocusedContainerColor = IntlFieldBg,
+    disabledContainerColor = IntlFieldBg,
     focusedBorderColor = IntlGrayBorder,
     unfocusedBorderColor = IntlGrayBorder,
     disabledBorderColor = IntlGrayBorder,

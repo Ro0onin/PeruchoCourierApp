@@ -23,6 +23,7 @@ class LocationForegroundService : Service() {
 
     private var orderId: Int = 0
     private var driverEmail: String = ""
+    private var tiempoEstimadoMin: Int = 9999
 
     override fun onCreate() {
         super.onCreate()
@@ -37,18 +38,30 @@ class LocationForegroundService : Service() {
 
                 if (orderId <= 0 || driverEmail.isBlank()) return
 
+                val tiempoSeguro = if (tiempoEstimadoMin > 0) {
+                    tiempoEstimadoMin
+                } else {
+                    9999
+                }
+
                 RetrofitClient.instance.updateDriverLocation(
                     orderId = orderId,
                     driverEmail = driverEmail,
                     lat = location.latitude.toString(),
-                    lng = location.longitude.toString()
+                    lng = location.longitude.toString(),
+                    tiempoEstimadoMin = tiempoSeguro
                 ).enqueue(object : Callback<BasicResponse> {
                     override fun onResponse(
                         call: Call<BasicResponse>,
                         response: Response<BasicResponse>
-                    ) {}
+                    ) {
+                    }
 
-                    override fun onFailure(call: Call<BasicResponse>, t: Throwable) {}
+                    override fun onFailure(
+                        call: Call<BasicResponse>,
+                        t: Throwable
+                    ) {
+                    }
                 })
             }
         }
@@ -57,6 +70,14 @@ class LocationForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         orderId = intent?.getIntExtra("order_id", 0) ?: 0
         driverEmail = intent?.getStringExtra("driver_email") ?: ""
+
+        val tiempoRecibido = intent?.getIntExtra("tiempo_estimado_min", 9999) ?: 9999
+
+        tiempoEstimadoMin = if (tiempoRecibido > 0) {
+            tiempoRecibido
+        } else {
+            9999
+        }
 
         startForeground(
             1001,

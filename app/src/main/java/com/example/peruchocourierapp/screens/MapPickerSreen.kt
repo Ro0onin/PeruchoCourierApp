@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,17 +34,20 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.example.peruchocourierapp.R
+import com.example.peruchocourierapp.theme.ThemeManager
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.model.AutocompletePrediction
 import com.google.android.libraries.places.api.model.Place
 import com.google.android.libraries.places.api.net.FetchPlaceRequest
 import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
 import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.MapEffect
 import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MarkerState
@@ -56,6 +60,73 @@ import java.util.Locale
 
 private val limaCenter = LatLng(-12.0464, -77.0428)
 private const val userZoom = 16f
+
+private val MapBlue = Color(0xFF1A4FBF)
+private val MapRed = Color(0xFFE02020)
+
+private data class MapPickerColors(
+    val sheetBg: Color,
+    val searchBg: Color,
+    val fieldBg: Color,
+    val fieldBorder: Color,
+    val text: Color,
+    val muted: Color,
+    val placeholder: Color,
+    val handle: Color,
+    val locationButtonBg: Color,
+    val locationButtonIcon: Color,
+    val optionBg: Color,
+    val optionSelectedBg: Color,
+    val confirmBg: Color,
+    val confirmDisabledBg: Color,
+    val confirmText: Color,
+    val error: Color
+)
+
+@Composable
+private fun mapPickerColors(): MapPickerColors {
+    val dark = ThemeManager.isDarkMode.value
+
+    return if (dark) {
+        MapPickerColors(
+            sheetBg = Color(0xFF111827),
+            searchBg = Color(0xFF111827),
+            fieldBg = Color(0xFF1F2937),
+            fieldBorder = Color(0xFF334155),
+            text = Color(0xFFF8FAFC),
+            muted = Color(0xFFCBD5E1),
+            placeholder = Color(0xFF94A3B8),
+            handle = Color(0xFF334155),
+            locationButtonBg = Color(0xFF111827).copy(alpha = 0.95f),
+            locationButtonIcon = Color(0xFFF8FAFC),
+            optionBg = Color(0xFF1F2937),
+            optionSelectedBg = Color(0xFF172554),
+            confirmBg = Color(0xFFF8FAFC),
+            confirmDisabledBg = Color(0xFF475569),
+            confirmText = Color(0xFF0F172A),
+            error = Color(0xFFFFB4B4)
+        )
+    } else {
+        MapPickerColors(
+            sheetBg = Color.White,
+            searchBg = Color.White,
+            fieldBg = Color(0xFFF7F7F7),
+            fieldBorder = Color(0xFFE5E5E5),
+            text = Color(0xFF1A1A1A),
+            muted = Color(0xFF777777),
+            placeholder = Color(0xFF777777),
+            handle = Color(0xFFE0E0E0),
+            locationButtonBg = Color.White.copy(alpha = 0.95f),
+            locationButtonIcon = Color(0xFF1A1A1A),
+            optionBg = Color(0xFFF7F7F7),
+            optionSelectedBg = Color(0xFFEAF1FF),
+            confirmBg = Color(0xFF1A1A1A),
+            confirmDisabledBg = Color(0xFFBDBDBD),
+            confirmText = Color.White,
+            error = MapRed
+        )
+    }
+}
 
 private fun estaDentroDePeru(lat: Double, lng: Double): Boolean {
     return lat in -18.50..-0.01 && lng in -81.50..-68.50
@@ -72,7 +143,8 @@ private fun limpiarDireccion(texto: String?): String {
     if (valor.isBlank()) return "Ubicación seleccionada"
 
     return if (esPlusCode(valor)) {
-        valor.substringAfter(",", "Ubicación seleccionada").trim().ifBlank { "Ubicación seleccionada" }
+        valor.substringAfter(",", "Ubicación seleccionada").trim()
+            .ifBlank { "Ubicación seleccionada" }
     } else {
         valor
     }
@@ -106,6 +178,7 @@ fun MapPickerScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
+    val colors = mapPickerColors()
 
     val fusedLocationClient = remember {
         LocationServices.getFusedLocationProviderClient(context)
@@ -296,14 +369,33 @@ fun MapPickerScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-
         GoogleMap(
+
             modifier = Modifier.fillMaxSize(),
             cameraPositionState = cameraPositionState,
             properties = MapProperties(
                 isMyLocationEnabled = hasLocationPermission
             )
         ) {
+            MapEffect(
+                ThemeManager.isDarkMode.value
+            ) { map ->
+
+                if (ThemeManager.isDarkMode.value) {
+
+                    map.setMapStyle(
+                        MapStyleOptions.loadRawResourceStyle(
+                            context,
+                            R.raw.map_style_dark
+                        )
+                    )
+
+                } else {
+
+                    map.setMapStyle(null)
+
+                }
+            }
             if (!modoMapa && locationSelected && selectedLocation != null) {
                 Marker(
                     state = MarkerState(position = selectedLocation!!),
@@ -337,6 +429,7 @@ fun MapPickerScreen(
             searchText = searchText,
             predictions = predictions,
             isSearching = isSearching,
+            colors = colors,
             onTextChange = {
                 modoMapa = false
                 searchText = it
@@ -356,15 +449,15 @@ fun MapPickerScreen(
                 isSearching = true
                 errorMessage = ""
 
-                val placeId = prediction.placeId
-                val fields = listOf(
-                    Place.Field.ID,
-                    Place.Field.NAME,
-                    Place.Field.ADDRESS,
-                    Place.Field.LAT_LNG
+                val request = FetchPlaceRequest.newInstance(
+                    prediction.placeId,
+                    listOf(
+                        Place.Field.ID,
+                        Place.Field.NAME,
+                        Place.Field.ADDRESS,
+                        Place.Field.LAT_LNG
+                    )
                 )
-
-                val request = FetchPlaceRequest.newInstance(placeId, fields)
 
                 Places.createClient(context)
                     .fetchPlace(request)
@@ -468,13 +561,13 @@ fun MapPickerScreen(
                 .padding(top = 86.dp, end = 16.dp)
                 .size(52.dp)
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.95f))
+                .background(colors.locationButtonBg)
                 .align(Alignment.TopEnd)
         ) {
             Icon(
                 imageVector = Icons.Default.MyLocation,
                 contentDescription = "Mi ubicación",
-                tint = Color(0xFF1A1A1A)
+                tint = colors.locationButtonIcon
             )
         }
 
@@ -484,7 +577,7 @@ fun MapPickerScreen(
                 .align(Alignment.BottomCenter),
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             colors = CardDefaults.cardColors(
-                containerColor = Color.White
+                containerColor = colors.sheetBg
             )
         ) {
             Column(
@@ -498,7 +591,7 @@ fun MapPickerScreen(
                         .width(42.dp)
                         .height(5.dp)
                         .clip(RoundedCornerShape(20.dp))
-                        .background(Color(0xFFE0E0E0))
+                        .background(colors.handle)
                         .align(Alignment.CenterHorizontally)
                 )
 
@@ -512,7 +605,7 @@ fun MapPickerScreen(
                     },
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1A1A1A)
+                    color = colors.text
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -524,14 +617,15 @@ fun MapPickerScreen(
                     label = { Text("Ubicación seleccionada") },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFFF7F7F7),
-                        unfocusedContainerColor = Color(0xFFF7F7F7),
+                        focusedContainerColor = colors.fieldBg,
+                        unfocusedContainerColor = colors.fieldBg,
                         focusedBorderColor = Color.Transparent,
                         unfocusedBorderColor = Color.Transparent,
-                        focusedLabelColor = Color(0xFF777777),
-                        unfocusedLabelColor = Color(0xFF777777),
-                        focusedTextColor = Color(0xFF1A1A1A),
-                        unfocusedTextColor = Color(0xFF1A1A1A)
+                        focusedLabelColor = colors.muted,
+                        unfocusedLabelColor = colors.muted,
+                        focusedTextColor = colors.text,
+                        unfocusedTextColor = colors.text,
+                        cursorColor = MapBlue
                     ),
                     leadingIcon = {
                         Image(
@@ -556,7 +650,7 @@ fun MapPickerScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(16.dp))
                         .background(
-                            if (modoMapa) Color(0xFFEAF1FF) else Color(0xFFF7F7F7)
+                            if (modoMapa) colors.optionSelectedBg else colors.optionBg
                         )
                         .clickable {
                             modoMapa = true
@@ -594,7 +688,7 @@ fun MapPickerScreen(
                     Icon(
                         imageVector = Icons.Default.MyLocation,
                         contentDescription = null,
-                        tint = Color(0xFF1A4FBF)
+                        tint = MapBlue
                     )
 
                     Spacer(modifier = Modifier.width(12.dp))
@@ -603,7 +697,7 @@ fun MapPickerScreen(
                         text = "Señalar ubicación en el mapa",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF1A1A1A)
+                        color = colors.text
                     )
                 }
 
@@ -612,7 +706,7 @@ fun MapPickerScreen(
 
                     Text(
                         text = "Buscando dirección...",
-                        color = Color(0xFF1A4FBF),
+                        color = MapBlue,
                         fontSize = 13.sp
                     )
                 }
@@ -622,7 +716,7 @@ fun MapPickerScreen(
 
                     Text(
                         text = errorMessage,
-                        color = Color(0xFFE02020),
+                        color = colors.error,
                         fontSize = 14.sp
                     )
                 }
@@ -667,10 +761,10 @@ fun MapPickerScreen(
                             selectedLocation != null &&
                             selectedAddress.isNotBlank(),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF1A1A1A),
-                        contentColor = Color.White,
-                        disabledContainerColor = Color(0xFFBDBDBD),
-                        disabledContentColor = Color.White
+                        containerColor = colors.confirmBg,
+                        contentColor = colors.confirmText,
+                        disabledContainerColor = colors.confirmDisabledBg,
+                        disabledContentColor = colors.confirmText.copy(alpha = 0.75f)
                     ),
                     shape = RoundedCornerShape(28.dp)
                 ) {
@@ -680,7 +774,8 @@ fun MapPickerScreen(
                             isSearching -> "Buscando..."
                             else -> "Confirmar ubicación"
                         },
-                        fontSize = 17.sp
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -694,6 +789,7 @@ private fun SearchBoxArriba(
     searchText: String,
     predictions: List<AutocompletePrediction>,
     isSearching: Boolean,
+    colors: MapPickerColors,
     onTextChange: (String) -> Unit,
     onClear: () -> Unit,
     onPredictionClick: (AutocompletePrediction) -> Unit,
@@ -704,7 +800,7 @@ private fun SearchBoxArriba(
             .fillMaxWidth()
             .shadow(10.dp, RoundedCornerShape(20.dp)),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        colors = CardDefaults.cardColors(containerColor = colors.searchBg)
     ) {
         Column(
             modifier = Modifier.padding(10.dp)
@@ -718,14 +814,15 @@ private fun SearchBoxArriba(
                             "Busca el punto de recojo"
                         } else {
                             "Busca el punto de entrega"
-                        }
+                        },
+                        color = colors.placeholder
                     )
                 },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = null,
-                        tint = Color(0xFF777777)
+                        tint = colors.placeholder
                     )
                 },
                 trailingIcon = {
@@ -734,7 +831,7 @@ private fun SearchBoxArriba(
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Limpiar",
-                                tint = Color(0xFF777777)
+                                tint = colors.placeholder
                             )
                         }
                     }
@@ -742,21 +839,25 @@ private fun SearchBoxArriba(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Color.White,
-                    focusedBorderColor = Color(0xFF1A4FBF),
-                    unfocusedBorderColor = Color(0xFFE5E5E5),
-                    focusedTextColor = Color(0xFF1A1A1A),
-                    unfocusedTextColor = Color(0xFF1A1A1A)
+                    focusedContainerColor = colors.fieldBg,
+                    unfocusedContainerColor = colors.fieldBg,
+                    focusedBorderColor = MapBlue,
+                    unfocusedBorderColor = colors.fieldBorder,
+                    focusedTextColor = colors.text,
+                    unfocusedTextColor = colors.text,
+                    focusedPlaceholderColor = colors.placeholder,
+                    unfocusedPlaceholderColor = colors.placeholder,
+                    cursorColor = MapBlue
                 ),
                 shape = RoundedCornerShape(16.dp)
             )
 
             if (isSearching) {
                 Spacer(modifier = Modifier.height(8.dp))
+
                 Text(
                     text = "Buscando dirección...",
-                    color = Color(0xFF1A4FBF),
+                    color = MapBlue,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 8.dp)
@@ -783,7 +884,7 @@ private fun SearchBoxArriba(
                             Icon(
                                 imageVector = Icons.Default.Search,
                                 contentDescription = null,
-                                tint = Color(0xFF1A4FBF),
+                                tint = MapBlue,
                                 modifier = Modifier.size(18.dp)
                             )
 
@@ -792,7 +893,7 @@ private fun SearchBoxArriba(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = prediction.getPrimaryText(null).toString(),
-                                    color = Color(0xFF1A1A1A),
+                                    color = colors.text,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
@@ -801,7 +902,7 @@ private fun SearchBoxArriba(
 
                                 Text(
                                     text = prediction.getSecondaryText(null).toString(),
-                                    color = Color(0xFF777777),
+                                    color = colors.muted,
                                     fontSize = 12.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis

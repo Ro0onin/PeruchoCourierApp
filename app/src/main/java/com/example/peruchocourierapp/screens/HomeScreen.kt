@@ -10,6 +10,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -20,7 +21,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Login
-import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.*
@@ -61,15 +61,60 @@ private val BlueDark = Color(0xFF0D3280)
 private val BluePrimary = Color(0xFF1A4FBF)
 private val BlueMid = Color(0xFF2D6BE4)
 private val RedPrimary = Color(0xFFE02020)
-private val GrayBg = Color(0xFFF4F6FB)
-private val GrayBorder = Color(0xFFE8ECF4)
-private val GrayText = Color(0xFF6B7A99)
-private val GrayPlaceholder = Color(0xFFB0BAD0)
-private val DarkText = Color(0xFF1A2340)
+
+private data class LoginColors(
+    val screenBg: Color,
+    val fieldBg: Color,
+    val border: Color,
+    val text: Color,
+    val muted: Color,
+    val placeholder: Color,
+    val googleBg: Color,
+    val googleText: Color,
+    val divider: Color,
+    val errorText: Color,
+    val shadowColor: Color
+)
+
+@Composable
+private fun loginColors(): LoginColors {
+    val dark = isSystemInDarkTheme()
+
+    return if (dark) {
+        LoginColors(
+            screenBg = Color(0xFF0F172A),
+            fieldBg = Color(0xFF1F2937),
+            border = Color(0xFF334155),
+            text = Color(0xFFF8FAFC),
+            muted = Color(0xFFCBD5E1),
+            placeholder = Color(0xFF94A3B8),
+            googleBg = Color(0xFF111827),
+            googleText = Color(0xFFF8FAFC),
+            divider = Color(0xFF334155),
+            errorText = Color(0xFFFFB4B4),
+            shadowColor = Color.Black.copy(alpha = 0.35f)
+        )
+    } else {
+        LoginColors(
+            screenBg = Color.White,
+            fieldBg = Color(0xFFF4F6FB),
+            border = Color(0xFFE8ECF4),
+            text = Color(0xFF1A2340),
+            muted = Color(0xFF6B7A99),
+            placeholder = Color(0xFFB0BAD0),
+            googleBg = Color.White,
+            googleText = Color(0xFF202124),
+            divider = Color(0xFFE8ECF4),
+            errorText = RedPrimary,
+            shadowColor = Color.Black.copy(alpha = 0.12f)
+        )
+    }
+}
 
 @Composable
 fun LoginScreen(navController: NavController) {
     val context = LocalContext.current
+    val colors = loginColors()
     val sessionManager = SessionManager(context)
     val firebaseAuth = FirebaseAuth.getInstance()
 
@@ -241,7 +286,7 @@ fun LoginScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(colors.screenBg)
             .navigationBarsPadding()
             .imePadding()
             .verticalScroll(rememberScrollState())
@@ -249,7 +294,7 @@ fun LoginScreen(navController: NavController) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(245.dp)
+                .height(280.dp)
                 .background(
                     Brush.linearGradient(
                         listOf(BlueDark, BluePrimary, BlueMid)
@@ -260,7 +305,7 @@ fun LoginScreen(navController: NavController) {
         ) {
             Box(
                 modifier = Modifier
-                    .size(160.dp)
+                    .size(170.dp)
                     .align(Alignment.BottomStart)
                     .offset(x = (-45).dp, y = 55.dp)
                     .clip(CircleShape)
@@ -269,7 +314,7 @@ fun LoginScreen(navController: NavController) {
 
             Box(
                 modifier = Modifier
-                    .size(120.dp)
+                    .size(130.dp)
                     .align(Alignment.TopEnd)
                     .offset(x = 38.dp, y = (-26).dp)
                     .clip(CircleShape)
@@ -278,11 +323,11 @@ fun LoginScreen(navController: NavController) {
 
             Image(
                 painter = painterResource(id = R.drawable.logo_perucho2),
-                contentDescription = null,
+                contentDescription = "Perucho Courier",
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(225.dp)
-                    .padding(horizontal = 24.dp),
+                    .height(250.dp)
+                    .padding(horizontal = 22.dp),
                 contentScale = ContentScale.Fit
             )
         }
@@ -290,12 +335,13 @@ fun LoginScreen(navController: NavController) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 22.dp, vertical = 28.dp),
+                .padding(horizontal = 24.dp)
+                .padding(top = 26.dp, bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 text = "¡Bienvenido!",
-                color = DarkText,
+                color = colors.text,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.ExtraBold,
                 modifier = Modifier.fillMaxWidth()
@@ -303,12 +349,12 @@ fun LoginScreen(navController: NavController) {
 
             Text(
                 text = "Inicia sesión para continuar",
-                color = GrayText,
+                color = colors.muted,
                 fontSize = 13.sp,
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Spacer(modifier = Modifier.height(22.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             PeruchoTextField(
                 label = "Correo electrónico",
@@ -316,8 +362,9 @@ fun LoginScreen(navController: NavController) {
                 onValueChange = { email = it },
                 placeholder = "correo@ejemplo.com",
                 keyboardType = KeyboardType.Email,
+                colors = colors,
                 leadingIcon = {
-                    Icon(Icons.Outlined.Email, null, tint = GrayPlaceholder)
+                    Icon(Icons.Outlined.Email, null, tint = colors.placeholder)
                 }
             )
 
@@ -329,11 +376,12 @@ fun LoginScreen(navController: NavController) {
                 onValueChange = { password = it },
                 placeholder = "••••••••",
                 keyboardType = KeyboardType.Password,
+                colors = colors,
                 isPassword = true,
                 passwordVisible = passwordVisible,
                 onTogglePasswordVisibility = { passwordVisible = !passwordVisible },
                 leadingIcon = {
-                    Icon(Icons.Outlined.Lock, null, tint = GrayPlaceholder)
+                    Icon(Icons.Outlined.Lock, null, tint = colors.placeholder)
                 }
             )
 
@@ -356,7 +404,7 @@ fun LoginScreen(navController: NavController) {
                 Spacer(modifier = Modifier.height(14.dp))
                 Text(
                     text = errorMessage,
-                    color = RedPrimary,
+                    color = colors.errorText,
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
@@ -444,17 +492,21 @@ fun LoginScreen(navController: NavController) {
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp)
+                    .height(56.dp)
                     .shadow(6.dp, RoundedCornerShape(14.dp)),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = RedPrimary,
-                    contentColor = Color.White
+                    contentColor = Color.White,
+                    disabledContainerColor = RedPrimary.copy(alpha = 0.45f),
+                    disabledContentColor = Color.White.copy(alpha = 0.85f)
                 ),
                 enabled = !isLoading && !isGoogleLoading
             ) {
                 Icon(Icons.Outlined.Login, null)
+
                 Spacer(modifier = Modifier.width(6.dp))
+
                 Text(
                     text = if (isLoading) "Ingresando..." else "Iniciar Sesión",
                     fontSize = 15.sp,
@@ -462,11 +514,11 @@ fun LoginScreen(navController: NavController) {
                 )
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            DividerWithText()
+            DividerWithText(colors)
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedButton(
                 onClick = {
@@ -481,12 +533,14 @@ fun LoginScreen(navController: NavController) {
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp),
+                    .height(56.dp),
                 shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.5.dp, GrayBorder),
+                border = BorderStroke(1.5.dp, colors.border),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color.White,
-                    contentColor = Color(0xFF202124)
+                    containerColor = colors.googleBg,
+                    contentColor = colors.googleText,
+                    disabledContainerColor = colors.googleBg.copy(alpha = 0.55f),
+                    disabledContentColor = colors.googleText.copy(alpha = 0.55f)
                 ),
                 enabled = !isLoading && !isGoogleLoading
             ) {
@@ -505,42 +559,11 @@ fun LoginScreen(navController: NavController) {
                         "Continuar con Google",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF202124)
+                    color = colors.googleText
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = "¿No tienes cuenta?",
-                color = GrayText,
-                fontSize = 13.sp,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            OutlinedButton(
-                onClick = { navController.navigate("register") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(2.dp, BluePrimary),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color.White,
-                    contentColor = BluePrimary
-                )
-            ) {
-                Icon(Icons.Outlined.PersonAdd, null)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Crear cuenta nueva",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
-            }
+            Spacer(modifier = Modifier.height(26.dp))
         }
     }
 }
@@ -552,6 +575,7 @@ private fun PeruchoTextField(
     onValueChange: (String) -> Unit,
     placeholder: String,
     keyboardType: KeyboardType,
+    colors: LoginColors,
     leadingIcon: @Composable (() -> Unit)? = null,
     isPassword: Boolean = false,
     passwordVisible: Boolean = false,
@@ -560,7 +584,7 @@ private fun PeruchoTextField(
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = label.uppercase(),
-            color = GrayText,
+            color = colors.muted,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.5.sp
@@ -587,7 +611,7 @@ private fun PeruchoTextField(
                                 Icons.Outlined.VisibilityOff
                             },
                             contentDescription = null,
-                            tint = GrayPlaceholder
+                            tint = colors.placeholder
                         )
                     }
                 }
@@ -595,12 +619,12 @@ private fun PeruchoTextField(
             placeholder = {
                 Text(
                     text = placeholder,
-                    color = GrayPlaceholder,
+                    color = colors.placeholder,
                     fontSize = 14.sp
                 )
             },
             textStyle = TextStyle(
-                color = DarkText,
+                color = colors.text,
                 fontSize = 14.sp
             ),
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
@@ -610,21 +634,26 @@ private fun PeruchoTextField(
                 VisualTransformation.None
             },
             colors = TextFieldDefaults.colors(
-                focusedContainerColor = GrayBg,
-                unfocusedContainerColor = GrayBg,
-                disabledContainerColor = GrayBg,
-                focusedIndicatorColor = GrayBorder,
-                unfocusedIndicatorColor = GrayBorder,
+                focusedContainerColor = colors.fieldBg,
+                unfocusedContainerColor = colors.fieldBg,
+                disabledContainerColor = colors.fieldBg,
+                focusedIndicatorColor = colors.border,
+                unfocusedIndicatorColor = colors.border,
+                disabledIndicatorColor = colors.border,
                 cursorColor = BluePrimary,
-                focusedTextColor = DarkText,
-                unfocusedTextColor = DarkText
+                focusedTextColor = colors.text,
+                unfocusedTextColor = colors.text,
+                disabledTextColor = colors.muted,
+                focusedPlaceholderColor = colors.placeholder,
+                unfocusedPlaceholderColor = colors.placeholder,
+                disabledPlaceholderColor = colors.placeholder
             )
         )
     }
 }
 
 @Composable
-private fun DividerWithText() {
+private fun DividerWithText(colors: LoginColors) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth()
@@ -633,12 +662,12 @@ private fun DividerWithText() {
             modifier = Modifier
                 .weight(1f)
                 .height(1.dp)
-                .background(GrayBorder)
+                .background(colors.divider)
         )
 
         Text(
             text = "o",
-            color = GrayPlaceholder,
+            color = colors.placeholder,
             fontSize = 12.sp,
             modifier = Modifier.padding(horizontal = 12.dp)
         )
@@ -647,7 +676,7 @@ private fun DividerWithText() {
             modifier = Modifier
                 .weight(1f)
                 .height(1.dp)
-                .background(GrayBorder)
+                .background(colors.divider)
         )
     }
 }

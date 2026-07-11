@@ -1,18 +1,18 @@
 package com.example.peruchocourierapp.screens
 
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.Animatable
-import android.location.Location
-import android.net.Uri
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.location.Location
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -29,9 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,11 +41,13 @@ import com.example.peruchocourierapp.R
 import com.example.peruchocourierapp.SessionManager
 import com.example.peruchocourierapp.api.RetrofitClient
 import com.example.peruchocourierapp.models.BasicResponse
+import com.example.peruchocourierapp.theme.ThemeManager
 import com.example.peruchocourierapp.utils.obtenerRutaCompleta
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.BitmapDescriptor
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.maps.android.compose.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -60,13 +62,45 @@ import retrofit2.Response
 import java.io.File
 import java.io.FileOutputStream
 
-private val Dark = Color(0xFF1A1A1A)
 private val Red = Color(0xFFE02020)
 private val Green = Color(0xFF22C55E)
-private val Muted = Color(0xFF888888)
-private val LightBg = Color(0xFFF5F5F5)
-private val Border = Color(0xFFF0F0F0)
 private val Blue = Color(0xFF1A4FBF)
+
+private val IsDarkMode: Boolean
+    @Composable get() = ThemeManager.isDarkMode.value
+
+private val ScreenBg: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF0F172A) else Color(0xFFFFFFFF)
+
+private val CardBg: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF111827) else Color(0xFFFFFFFF)
+
+private val Dark: Color
+    @Composable get() = if (IsDarkMode) Color(0xFFF8FAFC) else Color(0xFF1A1A1A)
+
+private val Muted: Color
+    @Composable get() = if (IsDarkMode) Color(0xFFCBD5E1) else Color(0xFF888888)
+
+private val LightBg: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF1F2937) else Color(0xFFF5F5F5)
+
+private val Border: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF334155) else Color(0xFFE8E8E8)
+
+private val SoftBlueBg: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF172554) else Color(0xFFE8EFFE)
+
+private val SoftRedBg: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF3F1717) else Color(0xFFFFEAEA)
+
+private val SoftGreenBg: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF14532D) else Color(0xFFEAFBF0)
+
+private val DisabledBg: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF374151) else Color(0xFFE8E8E8)
+
+private val DisabledText: Color
+    @Composable get() = if (IsDarkMode) Color(0xFF94A3B8) else Color(0xFF9CA3AF)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,7 +126,6 @@ fun PedidoNacionalScreen(navController: NavController) {
     var metodoPago by remember { mutableStateOf("Yape") }
     var pesoKg by remember { mutableStateOf("") }
     var cantidadBultos by remember { mutableStateOf("1") }
-    var packageSize by remember { mutableStateOf("Pequeño - hasta 5 kg") }
     var fotoPaqueteUri by remember { mutableStateOf<Uri?>(null) }
 
     var ruta by remember { mutableStateOf<List<LatLng>>(emptyList()) }
@@ -101,27 +134,30 @@ fun PedidoNacionalScreen(navController: NavController) {
 
     var errorMessage by remember { mutableStateOf("") }
     var isSubmitting by remember { mutableStateOf(false) }
-    var showDetailsSheet by remember { mutableStateOf(false) }
+
+    var showQueEnviarasPopup by remember { mutableStateOf(false) }
+    var showContactoPopup by remember { mutableStateOf(false) }
+    var showFotoPopup by remember { mutableStateOf(false) }
+    var showComentarioPopup by remember { mutableStateOf(false) }
     var showMotorizadoTarifasPopup by remember { mutableStateOf(false) }
+
     var tarifaMotorizado by remember { mutableStateOf("plana") }
     var destinatarioPaga by remember { mutableStateOf(false) }
 
     val pesoDouble = pesoKg.replace(",", ".").toDoubleOrNull()
 
     LaunchedEffect(pesoDouble, selectedVehicle) {
-
         if (selectedVehicle == "Motorizado" && pesoDouble != null) {
-
             tarifaMotorizado =
-                if (pesoDouble > 2.5) {
+                if (pesoDouble > 2.0) {
                     "estandar"
                 } else {
                     "plana"
                 }
 
             errorMessage =
-                if (pesoDouble > 2.5) {
-                    "Se cambió automáticamente a Tarifa Estándar porque supera los 2.5 kg"
+                if (pesoDouble > 2.0) {
+                    "Se cambió automáticamente a Tarifa Estándar porque supera los 2 kg"
                 } else {
                     ""
                 }
@@ -130,9 +166,9 @@ fun PedidoNacionalScreen(navController: NavController) {
         if (
             selectedVehicle == "Van / Minivan" &&
             pesoDouble != null &&
-            pesoDouble > 100
+            pesoDouble > 800
         ) {
-            errorMessage = "Van / Minivan solo permite paquetes hasta 100 kg"
+            errorMessage = "Van / Minivan solo permite paquetes hasta 800 kg"
         }
     }
 
@@ -258,7 +294,7 @@ fun PedidoNacionalScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(ScreenBg)
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
@@ -289,14 +325,14 @@ fun PedidoNacionalScreen(navController: NavController) {
 
             Text(
                 text = "ELIGE TU VEHÍCULO",
-                color = Color(0xFF999999),
+                color = Muted,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 0.6.sp,
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
             )
 
-            val bloqueaVan = pesoDouble != null && pesoDouble > 100.0
+            val bloqueaVan = pesoDouble != null && pesoDouble > 800.0
 
             VehicleCard(
                 icon = R.drawable.motorizado,
@@ -305,7 +341,7 @@ fun PedidoNacionalScreen(navController: NavController) {
                 } else {
                     "Motorizado Tarifa Estándar"
                 },
-                desc = "Paquetes pequeños hasta 2.5 kg o un poco más. Rápido en tráfico.",
+                desc = "Paquetes pequeños hasta 2kg o un poco más. Rápido en tráfico.",
                 price = calcularPrecioVehiculo(
                     vehiculo = "Motorizado",
                     distanciaKm = distanciaKm,
@@ -320,14 +356,15 @@ fun PedidoNacionalScreen(navController: NavController) {
                 onInfoClick = { showMotorizadoTarifasPopup = true },
                 onClick = { selectedVehicle = "Motorizado" }
             )
+
             VehicleCard(
                 icon = R.drawable.trailer,
                 name = "Van / Minivan",
-                desc = "Hasta 100 kg. Mudanzas pequeñas o carga voluminosa.",
+                desc = "Hasta 800 kg. Mudanzas, carga y paquetes voluminosos.",
                 price = calcularPrecioVehiculo("Van / Minivan", distanciaKm),
                 selected = selectedVehicle == "Van / Minivan" && !bloqueaVan,
                 enabled = !bloqueaVan,
-                disabledReason = "No disponible: supera los 100 kg permitidos.",
+                disabledReason = "No disponible: supera los 800 kg permitidos.",
                 onClick = { selectedVehicle = "Van / Minivan" }
             )
 
@@ -357,7 +394,27 @@ fun PedidoNacionalScreen(navController: NavController) {
                 total = totalSeleccionado,
                 cantidadBultos = cantidadBultos,
                 isSubmitting = isSubmitting,
-                onDetailsClick = { showDetailsSheet = true },
+                destinatarioPaga = destinatarioPaga,
+                metodoPago = metodoPago,
+                descripcion = descripcion,
+                categoria = itemCategory,
+                pesoKg = pesoKg,
+                senderPhone = senderPhone,
+                receiverPhone = receiverPhone,
+                fotoPaqueteUri = fotoPaqueteUri,
+                onPesoChange = { valor ->
+                    pesoKg = valor.filter { caracter ->
+                        caracter.isDigit() || caracter == '.' || caracter == ','
+                    }
+                },
+                onCantidadBultosChange = { valor ->
+                    cantidadBultos = valor.filter { it.isDigit() }
+                },
+                onEditDetails = {
+                    showQueEnviarasPopup = true
+                },
+                onDestinatarioPagaChange = { destinatarioPaga = it },
+                onMetodoPagoChange = { metodoPago = it },
                 onConfirm = {
                     val pesoValidado = pesoKg.replace(",", ".").toDoubleOrNull()
                     val bultosValidados = cantidadBultos.toIntOrNull()
@@ -367,45 +424,27 @@ fun PedidoNacionalScreen(navController: NavController) {
                             errorMessage = "Selecciona punto de recojo y entrega"
                         }
 
-                        pickupLat == 0.0 || pickupLng == 0.0 || dropoffLat == 0.0 || dropoffLng == 0.0 -> {
-                            errorMessage = "Selecciona ubicaciones válidas"
+                        descripcion.isBlank() -> {
+                            errorMessage = ""
+                            showQueEnviarasPopup = true
                         }
 
                         pesoValidado == null || pesoValidado <= 0.0 -> {
-                            errorMessage = "Ingresa el peso aproximado del paquete"
-                            showDetailsSheet = true
-                        }
-
-                        selectedVehicle == "Motorizado" && tarifaMotorizado == "plana" && pesoValidado > 2.5 -> {
-                            tarifaMotorizado = "estandar"
-                            errorMessage = "Se cambió automáticamente a Tarifa Estándar porque supera los 2.5 kg"
-                        }
-
-                        selectedVehicle == "Motorizado" && pesoValidado > 5.0 -> {
-                            errorMessage = "El motorizado solo admite hasta 5 kg. Selecciona Van / Minivan."
-                            showDetailsSheet = true
-                        }
-
-                        selectedVehicle == "Van / Minivan" && pesoValidado > 100.0 -> {
-                            errorMessage = "Van / Minivan solo permite paquetes hasta 100 kg"
-                            showDetailsSheet = true
-                        }
-
-                        descripcion.isBlank() -> {
-                            errorMessage = "Agrega los detalles del pedido"
-                            showDetailsSheet = true
-                        }
-
-                        fotoPaqueteUri == null -> {
-                            errorMessage = "Agrega una foto del paquete"
-                            showDetailsSheet = true
+                            errorMessage = "Ingresa un peso aproximado válido"
                         }
 
                         bultosValidados == null || bultosValidados <= 0 -> {
-                            errorMessage = "Ingresa la cantidad de cajas o bultos"
-                            showDetailsSheet = true
+                            errorMessage = "Ingresa una cantidad válida de paquetes"
                         }
 
+                        senderPhone.isBlank() || receiverPhone.isBlank() -> {
+                            errorMessage = ""
+                            showContactoPopup = true
+                        }
+                        fotoPaqueteUri == null -> {
+                            errorMessage = ""
+                            showFotoPopup = true
+                        }
                         else -> {
                             val userEmail = sessionManager.getUserEmail()
 
@@ -442,7 +481,6 @@ fun PedidoNacionalScreen(navController: NavController) {
                                     descripcion = textPart(descripcion),
                                     categoria = textPart(itemCategory),
                                     comentariosRepartidor = textPart(comentarioRepartidor),
-                                    tamanoPaquete = textPart(packageSize),
                                     cantidadBultos = textPart(cantidadBultos),
                                     pesoKg = textPart("%.2f".format(pesoValidado)),
                                     tipoVehiculo = textPart(
@@ -496,192 +534,77 @@ fun PedidoNacionalScreen(navController: NavController) {
         }
     }
 
-    if (showDetailsSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showDetailsSheet = false },
-            containerColor = Color.White
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(20.dp)
-                    .navigationBarsPadding()
-            ) {
-                Text(
-                    text = "Detalles de la solicitud",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Dark
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                CategorySelector(
-                    selected = itemCategory,
-                    onSelect = { itemCategory = it }
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                PackageSizeSelector(
-                    selected = packageSize,
-                    onSelect = { packageSize = it }
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                LightField(
-                    value = pesoKg,
-                    onValueChange = { pesoKg = it },
-                    label = "Peso aproximado del paquete (kg)",
-                    keyboardType = KeyboardType.Decimal
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                LightField(
-                    value = cantidadBultos,
-                    onValueChange = { cantidadBultos = it.filter { c -> c.isDigit() } },
-                    label = "Cantidad de cajas o bultos",
-                    keyboardType = KeyboardType.Number
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Button(
-                    onClick = { imagePickerLauncher.launch("image/*") },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Dark),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Icon(Icons.Default.PhotoCamera, null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (fotoPaqueteUri == null) {
-                            "Agregar foto del paquete"
-                        } else {
-                            "Cambiar foto del paquete"
-                        }
-                    )
-                }
-
-                if (fotoPaqueteUri != null) {
-                    Text(
-                        text = "Foto seleccionada correctamente",
-                        color = Green,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                LightField(
-                    value = senderPhone,
-                    onValueChange = { senderPhone = it },
-                    label = "Teléfono del remitente",
-                    keyboardType = KeyboardType.Phone
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                LightField(
-                    value = receiverPhone,
-                    onValueChange = { receiverPhone = it },
-                    label = "Teléfono del destinatario",
-                    keyboardType = KeyboardType.Phone
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                LightField(
-                    value = descripcion,
-                    onValueChange = { descripcion = it },
-                    label = "Descripción del pedido",
-                    singleLine = false,
-                    minLines = 3
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                LightField(
-                    value = comentarioRepartidor,
-                    onValueChange = { comentarioRepartidor = it },
-                    label = "Comentario para el repartidor",
-                    singleLine = false,
-                    minLines = 3
-                )
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                DestinatarioPagaSwitch(
-                    checked = destinatarioPaga,
-                    onCheckedChange = { destinatarioPaga = it }
-                )
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                Text(
-                    text = "Método de pago",
-                    color = Dark,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Black
-                )
-
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    PaymentButton(
-                        icon = R.drawable.ic_yape,
-                        metodo = "Yape",
-                        seleccionado = metodoPago == "Yape"
-                    ) {
-                        metodoPago = "Yape"
-                    }
-
-                    PaymentButton(
-                        icon = R.drawable.ic_plin,
-                        metodo = "Plin",
-                        seleccionado = metodoPago == "Plin"
-                    ) {
-                        metodoPago = "Plin"
-                    }
-
-                    PaymentButton(
-                        icon = R.drawable.ic_efectivo,
-                        metodo = "Efectivo",
-                        seleccionado = metodoPago == "Efectivo"
-                    ) {
-                        metodoPago = "Efectivo"
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                Button(
-                    onClick = { showDetailsSheet = false },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Dark),
-                    shape = RoundedCornerShape(28.dp)
-                ) {
-                    Text("Guardar detalles", fontSize = 17.sp)
-                }
+    if (showQueEnviarasPopup) {
+        QueEnviarasPopup(
+            descripcion = descripcion,
+            categoria = itemCategory,
+            onDescripcionChange = { descripcion = it },
+            onCategoriaChange = { itemCategory = it },
+            onDismiss = { showQueEnviarasPopup = false },
+            onContinue = {
+                errorMessage = ""
+                showQueEnviarasPopup = false
+                showContactoPopup = true
             }
-        }
+        )
+    }
+    if (showContactoPopup) {
+        ContactoPedidoPopup(
+            senderPhone = senderPhone,
+            receiverPhone = receiverPhone,
+            onSenderPhoneChange = { senderPhone = it },
+            onReceiverPhoneChange = { receiverPhone = it },
+            onDismiss = { showContactoPopup = false },
+            onContinue = {
+                errorMessage = ""
+                showContactoPopup = false
+                showFotoPopup = true
+            }
+        )
+    }
+    if (showFotoPopup) {
+        FotoPaquetePopup(
+            fotoPaqueteUri = fotoPaqueteUri,
+            onSelectPhoto = {
+                imagePickerLauncher.launch("image/*")
+            },
+            onDismiss = { showFotoPopup = false },
+            onContinue = {
+                errorMessage = ""
+                showFotoPopup = false
+                showComentarioPopup = true
+            }
+        )
+    }
+    if (showComentarioPopup) {
+        ComentarioRepartidorPopup(
+            comentario = comentarioRepartidor,
+            onComentarioChange = { comentarioRepartidor = it },
+            onDismiss = { showComentarioPopup = false },
+            onSkip = {
+                comentarioRepartidor = ""
+                showComentarioPopup = false
+            },
+            onFinish = {
+                errorMessage = ""
+                showComentarioPopup = false
+            }
+        )
     }
 
     if (showMotorizadoTarifasPopup) {
         MotorizadoTarifasPopup(
             selectedTarifa = tarifaMotorizado,
-            onSelectTarifa = { tarifaMotorizado = it },
+            pesoKg = pesoDouble,
+            onSelectTarifa = {
+                if (it == "plana" && (pesoDouble ?: 0.0) > 2) {
+                    tarifaMotorizado = "estandar"
+                    errorMessage = "La Tarifa Plana no está disponible para paquetes mayores a 2kg"
+                } else {
+                    tarifaMotorizado = it
+                    errorMessage = ""
+                }
+            },
             onDismiss = { showMotorizadoTarifasPopup = false }
         )
     }
@@ -813,6 +736,25 @@ private fun MiniMapPedido(
                         120
                     )
                 )
+            }
+            MapEffect(
+                ThemeManager.isDarkMode.value
+            ) { map ->
+
+                if (ThemeManager.isDarkMode.value) {
+
+                    map.setMapStyle(
+                        MapStyleOptions.loadRawResourceStyle(
+                            context,
+                            R.raw.map_style_dark
+                        )
+                    )
+
+                } else {
+
+                    map.setMapStyle(null)
+
+                }
             }
 
             if (
@@ -949,9 +891,9 @@ private fun VehicleCard(
             .clip(RoundedCornerShape(16.dp))
             .background(
                 when {
-                    !enabled -> Color(0xFFF3F3F3)
-                    selected -> Color(0xFFEAF2FF)
-                    else -> Color.White
+                    !enabled -> LightBg
+                    selected -> SoftBlueBg
+                    else -> CardBg
                 }
             )
             .border(
@@ -959,7 +901,7 @@ private fun VehicleCard(
                 color = when {
                     !enabled -> Color(0xFFE0E0E0)
                     selected -> Blue
-                    else -> Color(0xFFF0F0F0)
+                    else -> Border
                 },
                 shape = RoundedCornerShape(16.dp)
             )
@@ -1030,7 +972,7 @@ private fun VehicleCard(
 
                 Text(
                     text = if (name.contains("Plana")) {
-                        "S/10 fijo hasta 2.5 kg"
+                        "S/10 fijo hasta 2kg"
                     } else {
                         "S/10 + km extra según distancia"
                     },
@@ -1077,7 +1019,7 @@ private fun VehicleCard(
 
                 Text(
                     text = "Lima · Callao",
-                    color = Color(0xFF999999),
+                    color = Muted,
                     fontSize = 10.sp
                 )
             }
@@ -1086,119 +1028,358 @@ private fun VehicleCard(
 }
 
 @Composable
-private fun MotorizadoTarifasPopup(
-    selectedTarifa: String,
-    onSelectTarifa: (String) -> Unit,
-    onDismiss: () -> Unit
+private fun QueEnviarasPopup(
+    descripcion: String,
+    categoria: String,
+    onDescripcionChange: (String) -> Unit,
+    onCategoriaChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onContinue: () -> Unit
 ) {
+    val categorias = listOf(
+        Triple("Documentos", "📄", Blue),
+        Triple("Ropa", "👕", Red),
+        Triple("Tecnología", "💻", Blue),
+        Triple("Alimentos", "🍴", Color(0xFFF97316)),
+        Triple("Medicinas", "🧴", Green),
+        Triple("Accesorios", "🛍️", Color(0xFF9333EA)),
+        Triple("Otros", "•••", Muted)
+    )
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
-        shape = RoundedCornerShape(22.dp),
-        confirmButton = {
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Dark),
-                shape = RoundedCornerShape(14.dp)
-            ) {
+        containerColor = CardBg,
+        shape = RoundedCornerShape(28.dp),
+        title = {
+            Column {
+                Box(
+                    modifier = Modifier
+                        .width(44.dp)
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(DisabledText)
+                        .align(Alignment.CenterHorizontally)
+                )
+
+                Spacer(modifier = Modifier.height(22.dp))
+
                 Text(
-                    text = "Entendido",
+                    text = "¿Qué enviarás?",
+                    fontSize = 27.sp,
                     fontWeight = FontWeight.Black,
-                    fontSize = 15.sp
+                    color = Dark
+                )
+
+                Text(
+                    text = "Describe brevemente el contenido del paquete.",
+                    fontSize = 14.sp,
+                    color = Muted,
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
         },
-        title = {
-            Text(
-                text = "Tarifas del Motorizado 🏍️",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Black,
-                color = Dark
-            )
-        },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "Elige la tarifa que más te conviene",
-                    color = Muted,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                OutlinedTextField(
+                    value = descripcion,
+                    onValueChange = onDescripcionChange,
+                    placeholder = {
+                        Text(
+                            text = "Ej. Documentos SUNAT",
+                            color = Muted
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    singleLine = false,
+                    minLines = 2,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Blue,
+                        unfocusedBorderColor = Border,
+                        focusedTextColor = Dark,
+                        unfocusedTextColor = Dark,
+                        cursorColor = Blue
+                    )
                 )
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Text(
+                    text = "Categoría",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Dark
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                categorias.forEach { item ->
+                    val nombre = item.first
+                    val emoji = item.second
+                    val color = item.third
+                    val selected = categoria == nombre
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(
+                                if (selected) SoftBlueBg
+                                else CardBg
+                            )
+                            .border(
+                                width = if (selected) 1.5.dp else 1.dp,
+                                color = if (selected) Blue else Border,
+                                shape = RoundedCornerShape(18.dp)
+                            )
+                            .clickable { onCategoriaChange(nombre) }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(color.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = emoji,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
+                                color = color
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Text(
+                            text = nombre,
+                            color = Dark,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Black,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        RadioButton(
+                            selected = selected,
+                            onClick = { onCategoriaChange(nombre) },
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = Blue,
+                                unselectedColor = DisabledText
+                            )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = onContinue,
+                    enabled = descripcion.trim().isNotEmpty(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Blue,
+                        contentColor = Color.White,
+                        disabledContainerColor = DisabledBg,
+                        disabledContentColor = DisabledText
+                    )
+                ) {
+                    Text(
+                        text = "Continuar",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Cancelar",
+                        color = Red,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {}
+    )
+}
+
+@Composable
+private fun MotorizadoTarifasPopup(
+    selectedTarifa: String,
+    pesoKg: Double?,
+    onSelectTarifa: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val puedeUsarTarifaPlana = (pesoKg ?: 0.0) <= 2.0
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardBg,
+        shape = RoundedCornerShape(22.dp),
+        confirmButton = {},
+        title = {},
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(13.dp))
+                            .background(Red),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.motorizado),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(25.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Text(
+                        text = "Tarifas del motorizado",
+                        color = Dark,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.SansSerif,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(LightBg)
+                            .clickable { onDismiss() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "✕",
+                            color = Muted,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = if (puedeUsarTarifaPlana) {
+                        "Elige la tarifa que más te conviene para este envío."
+                    } else {
+                        "La tarifa plana no está disponible porque supera los 2kg."
+                    },
+                    color = Muted,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    lineHeight = 18.sp
+                )
+
+                Spacer(modifier = Modifier.height(18.dp))
 
                 MotorizadoTarifaCard(
-                    title = "Motorizado Tarifa Plana",
-                    tag = "PRECIO FIJO",
+                    title = "Tarifa Plana",
+                    tag = if (puedeUsarTarifaPlana) "Precio fijo" else "No disponible",
                     price = "S/ 10",
-                    subtitle = "precio único",
-                    background = Color(0xFFF0FFF4),
-                    border = Green,
-                    tagColor = Green,
-                    selected = selectedTarifa == "plana",
+                    subtitle = if (puedeUsarTarifaPlana) "precio único" else "máx. 2kg",
+                    selected = selectedTarifa == "plana" && puedeUsarTarifaPlana,
+                    enabled = puedeUsarTarifaPlana,
                     onClick = {
-                        onSelectTarifa("plana")
-                        onDismiss()
+                        if (puedeUsarTarifaPlana) {
+                            onSelectTarifa("plana")
+                            onDismiss()
+                        }
                     },
-                    items = listOf(
-                        "Ideal para paquetes pequeños y livianos",
-                        "Hasta 2.5 kg: precio fijo de S/10",
-                        "Precio no aumenta por distancia mientras no supere 2.5 kg"
-                    )
+                    items = if (puedeUsarTarifaPlana) {
+                        listOf(
+                            "Ideal para paquetes pequeños y livianos",
+                            "Hasta 2 kg con precio fijo de S/10",
+                            "No aumenta por distancia si no supera 2 kg"
+                        )
+                    } else {
+                        listOf(
+                            "No disponible para paquetes mayores a 2 kg",
+                            "Selecciona Tarifa Estándar para continuar",
+                            "Disponible solo hasta 2 kg"
+                        )
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
                 MotorizadoTarifaCard(
-                    title = "Motorizado Tarifa Estándar",
-                    tag = "MÁS CAPACIDAD",
+                    title = "Tarifa Estándar",
+                    tag = "Más capacidad",
                     price = "S/ 10",
-                    subtitle = "+ S/1 por km",
-                    background = Color(0xFFF0F4FF),
-                    border = Blue,
-                    tagColor = Blue,
+                    subtitle = "+ S/1 por km extra",
                     selected = selectedTarifa == "estandar",
+                    enabled = true,
                     onClick = {
                         onSelectTarifa("estandar")
                         onDismiss()
                     },
                     items = listOf(
-                        "Para paquetes mayores a 2.5 kg hasta 5 kg",
-                        "Precio base S/10",
-                        "+ S/1 por km extra después de los 15 km",
+                        "Para paquetes de 2kg a más",
+                        "Precio base de S/10",
+                        "+ S/1 por km extra después de los 5 km"
                     )
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
-                Surface(
-                    color = Color(0xFFFFF8F0),
-                    shape = RoundedCornerShape(12.dp)
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Red),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(10.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = null,
-                            tint = Color(0xFFF97316),
-                            modifier = Modifier.size(18.dp)
-                        )
+                    Text(
+                        text = "Entendido",
+                        color = Color.White,
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.SansSerif
+                    )
+                }
 
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Text(
-                            text = "La tarifa se calcula automáticamente al seleccionar origen y destino.",
-                            color = Color(0xFF92400E),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            lineHeight = 15.sp
-                        )
-                    }
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Cancelar",
+                        color = Blue,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
         }
@@ -1211,112 +1392,223 @@ private fun MotorizadoTarifaCard(
     tag: String,
     price: String,
     subtitle: String,
-    background: Color,
-    border: Color,
-    tagColor: Color,
     selected: Boolean,
+    enabled: Boolean = true,
     onClick: () -> Unit,
     items: List<String>
 ) {
+    val isDark = IsDarkMode
+    val alpha = if (enabled) 1f else 0.45f
+
+    val selectedBackground = if (isDark) {
+        Color(0xFF5A171B)
+    } else {
+        Color(0xFFFFEAEA)
+    }
+
+    val selectedBorder = if (isDark) {
+        Color(0xFFFF5A5F)
+    } else {
+        Red
+    }
+
+    val selectedTitleColor = if (isDark) {
+        Color(0xFFFFFFFF)
+    } else {
+        Color(0xFF7F1D1D)
+    }
+
+    val selectedBodyColor = if (isDark) {
+        Color(0xFFFFE4E6)
+    } else {
+        Color(0xFF5A3336)
+    }
+
+    val selectedSecondaryColor = if (isDark) {
+        Color(0xFFFECACA)
+    } else {
+        Color(0xFF7F1D1D)
+    }
+
+    val unselectedTitleColor = Dark
+    val unselectedBodyColor = if (isDark) {
+        Color(0xFFE2E8F0)
+    } else {
+        Muted
+    }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() },
-        color = if (selected) background else Color.White,
-        shape = RoundedCornerShape(18.dp),
-        shadowElevation = if (selected) 8.dp else 2.dp,
+            .clickable(enabled = enabled) {
+                onClick()
+            },
+        color = when {
+            !enabled -> LightBg
+            selected -> selectedBackground
+            else -> CardBg
+        },
+        shape = RoundedCornerShape(14.dp),
         border = BorderStroke(
-            width = if (selected) 3.dp else 2.dp,
-            color = border
+            width = 1.5.dp,
+            color = when {
+                !enabled -> Border.copy(alpha = 0.55f)
+                selected -> selectedBorder
+                else -> Border
+            }
         )
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(22.dp)
-                        .clip(CircleShape)
-                        .background(if (selected) border else Color.White)
-                        .border(2.dp, border, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (selected) {
+        Box(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(15.dp)
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (selected && enabled) {
+                            Red
+                        } else {
+                            if (isDark) Color(0xFF111827) else CardBg
+                        }
+                    )
+                    .border(
+                        width = 1.5.dp,
+                        color = if (selected && enabled) {
+                            selectedBorder
+                        } else {
+                            Border
+                        },
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                when {
+                    selected && enabled -> {
                         Icon(
                             imageVector = Icons.Default.Check,
                             contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(15.dp)
+                            modifier = Modifier.size(13.dp)
                         )
                     }
-                }
 
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        color = Dark,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Black
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(tagColor)
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                    ) {
-                        Text(
-                            text = tag,
-                            color = Color.White,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Black
+                    !enabled -> {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = Muted.copy(alpha = alpha),
+                            modifier = Modifier.size(12.dp)
                         )
                     }
-                }
-
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = price,
-                        color = Dark,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Black
-                    )
-
-                    Text(
-                        text = subtitle,
-                        color = Muted,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold
-                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            items.forEach { item ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(15.dp)
+                    .padding(end = 26.dp)
+            ) {
                 Row(
-                    modifier = Modifier.padding(vertical = 3.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = border,
-                        modifier = Modifier.size(15.dp)
-                    )
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = title,
+                            color = when {
+                                !enabled -> Muted.copy(alpha = alpha)
+                                selected -> selectedTitleColor
+                                else -> unselectedTitleColor
+                            },
+                            fontSize = 14.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.SansSerif
+                        )
 
-                    Spacer(modifier = Modifier.width(7.dp))
+                        Spacer(modifier = Modifier.height(3.dp))
 
-                    Text(
-                        text = item,
-                        color = Color(0xFF444444),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        lineHeight = 15.sp
-                    )
+                        Text(
+                            text = tag.uppercase(),
+                            color = when {
+                                !enabled -> Muted.copy(alpha = alpha)
+                                selected && isDark -> Color(0xFF60A5FA)
+                                else -> Blue
+                            },
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.3.sp,
+                            fontFamily = FontFamily.SansSerif
+                        )
+                    }
+
+                    Column(
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        Text(
+                            text = price,
+                            color = when {
+                                !enabled -> Muted.copy(alpha = alpha)
+                                selected -> selectedTitleColor
+                                else -> unselectedTitleColor
+                            },
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+
+                        Text(
+                            text = subtitle,
+                            color = when {
+                                !enabled -> Muted.copy(alpha = alpha)
+                                selected -> selectedSecondaryColor
+                                else -> unselectedBodyColor
+                            },
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = FontFamily.SansSerif
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(9.dp))
+
+                items.forEach { item ->
+                    Row(
+                        modifier = Modifier.padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text(
+                            text = "–",
+                            color = when {
+                                !enabled -> Muted.copy(alpha = alpha)
+                                selected -> selectedBorder
+                                else -> Muted
+                            },
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        Text(
+                            text = item,
+                            color = when {
+                                !enabled -> Muted.copy(alpha = alpha)
+                                selected -> selectedBodyColor
+                                else -> unselectedTitleColor
+                            },
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            lineHeight = 19.sp,
+                            fontFamily = FontFamily.SansSerif
+                        )
+                    }
                 }
             }
         }
@@ -1358,42 +1650,354 @@ private fun ConfirmBar(
     total: Double,
     cantidadBultos: String,
     isSubmitting: Boolean,
-    onDetailsClick: () -> Unit,
+    destinatarioPaga: Boolean,
+    metodoPago: String,
+    descripcion: String,
+    categoria: String,
+    pesoKg: String,
+    senderPhone: String,
+    receiverPhone: String,
+    fotoPaqueteUri: Uri?,
+    onPesoChange: (String) -> Unit,
+    onCantidadBultosChange: (String) -> Unit,
+    onEditDetails: () -> Unit,
+    onDestinatarioPagaChange: (Boolean) -> Unit,
+    onMetodoPagoChange: (String) -> Unit,
     onConfirm: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White)
+            .background(CardBg)
             .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onDetailsClick() }
-                .clip(RoundedCornerShape(14.dp))
-                .background(LightBg)
-                .padding(horizontal = 14.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Detalles de la solicitud",
-                color = Muted,
-                fontSize = 14.sp,
-                modifier = Modifier.weight(1f)
-            )
 
-            Icon(Icons.Default.KeyboardArrowRight, null, tint = Muted)
+        Text(
+            text = "Peso y cantidad",
+            color = Dark,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Black
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = LightBg,
+            border = BorderStroke(1.5.dp, Border)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                OutlinedTextField(
+                    value = pesoKg,
+                    onValueChange = { value ->
+                        onPesoChange(
+                            value.filter { character ->
+                                character.isDigit() || character == '.' || character == ','
+                            }
+                        )
+                    },
+                    label = { Text("Peso aproximado") },
+                    placeholder = { Text("Ej. 2") },
+                    suffix = { Text("kg") },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal
+                    ),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = CardBg,
+                        unfocusedContainerColor = CardBg,
+                        focusedBorderColor = Blue,
+                        unfocusedBorderColor = Border,
+                        focusedTextColor = Dark,
+                        unfocusedTextColor = Dark,
+                        focusedLabelColor = Blue,
+                        unfocusedLabelColor = Muted,
+                        cursorColor = Blue
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedTextField(
+                    value = cantidadBultos,
+                    onValueChange = { value ->
+                        onCantidadBultosChange(value.filter { it.isDigit() })
+                    },
+                    label = { Text("Cantidad de paquetes") },
+                    placeholder = { Text("Ej. 1") },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number
+                    ),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = CardBg,
+                        unfocusedContainerColor = CardBg,
+                        focusedBorderColor = Blue,
+                        unfocusedBorderColor = Border,
+                        focusedTextColor = Dark,
+                        unfocusedTextColor = Dark,
+                        focusedLabelColor = Blue,
+                        unfocusedLabelColor = Muted,
+                        cursorColor = Blue
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFFFFF8E8))
+                        .border(
+                            1.dp,
+                            Color(0xFFFFD166),
+                            RoundedCornerShape(14.dp)
+                        )
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+
+                    Icon(
+                        imageVector = Icons.Default.WarningAmber,
+                        contentDescription = null,
+                        tint = Color(0xFFF59E0B),
+                        modifier = Modifier.size(20.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Column {
+
+                        Text(
+                            text = "Peso referencial",
+                            color = Color(0xFF92400E),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(modifier = Modifier.height(3.dp))
+
+                        Text(
+                            text = "El peso ingresado es aproximado y será verificado por el repartidor durante el recojo. Si el paquete supera los 2 kg, el pedido cambiará automáticamente a Tarifa Estándar y el costo será recalculado.",
+                            color = Color(0xFF92400E),
+                            fontSize = 11.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+            }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (
+            descripcion.isNotBlank() ||
+            pesoKg.isNotBlank() ||
+            senderPhone.isNotBlank() ||
+            receiverPhone.isNotBlank() ||
+            fotoPaqueteUri != null
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onEditDetails() },
+                shape = RoundedCornerShape(18.dp),
+                color = LightBg,
+                border = BorderStroke(1.dp, Border)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Datos del pedido",
+                            color = Dark,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Black,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        Text(
+                            text = "Modificar",
+                            color = Blue,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black
+                        )
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = Blue,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    if (descripcion.isNotBlank()) {
+                        Text(
+                            text = "📦 $categoria · $descripcion",
+                            color = Dark,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    if (pesoKg.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(5.dp))
+                        Text(
+                            text = "⚖ $pesoKg kg · $cantidadBultos paquete(s)",
+                            color = Dark,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    if (senderPhone.isNotBlank() && receiverPhone.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(5.dp))
+                        Text(
+                            text = "📞 Remitente: $senderPhone · Destinatario: $receiverPhone",
+                            color = Dark,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    if (fotoPaqueteUri != null) {
+                        Spacer(modifier = Modifier.height(5.dp))
+                        Text(
+                            text = "📷 Foto del paquete agregada",
+                            color = Green,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onDestinatarioPagaChange(!destinatarioPaga) },
+            shape = RoundedCornerShape(16.dp),
+            color = if (destinatarioPaga) SoftBlueBg else LightBg,
+            border = BorderStroke(
+                1.5.dp,
+                if (destinatarioPaga) Blue else Border
+            )
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "¿El destinatario paga?",
+                        color = Dark,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Black
+                    )
+
+                    Text(
+                        text = if (destinatarioPaga)
+                            "Sí, pagará al recibir el pedido."
+                        else
+                            "No, pagarás tú al confirmar.",
+                        color = Muted,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                Switch(
+                    checked = destinatarioPaga,
+                    onCheckedChange = onDestinatarioPagaChange,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Blue,
+                        uncheckedThumbColor = Color.White,
+                        uncheckedTrackColor = DisabledText,
+                        uncheckedBorderColor = Color.Transparent
+                    )
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = "Método de pago",
+            color = Dark,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Black
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            PaymentButton(
+                icon = R.drawable.ic_yape,
+                metodo = "Yape",
+                seleccionado = metodoPago == "Yape"
+            ) {
+                onMetodoPagoChange("Yape")
+            }
+
+            PaymentButton(
+                icon = R.drawable.ic_plin,
+                metodo = "Plin",
+                seleccionado = metodoPago == "Plin"
+            ) {
+                onMetodoPagoChange("Plin")
+            }
+
+            PaymentButton(
+                icon = R.drawable.ic_efectivo,
+                metodo = "Efectivo",
+                seleccionado = metodoPago == "Efectivo"
+            ) {
+                onMetodoPagoChange("Efectivo")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("Total estimado", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Text("S/ ${"%.2f".format(total)}", color = Dark, fontSize = 18.sp, fontWeight = FontWeight.Black)
+            Text(
+                text = "Total estimado",
+                color = Muted,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = "S/ ${"%.2f".format(total)}",
+                color = Dark,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Black
+            )
         }
 
         Spacer(modifier = Modifier.height(4.dp))
@@ -1403,7 +2007,7 @@ private fun ConfirmBar(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "Cajas / bultos",
+                text = "Paquetes",
                 color = Muted,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold
@@ -1417,19 +2021,26 @@ private fun ConfirmBar(
             )
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         Button(
             onClick = onConfirm,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(54.dp),
+                .height(58.dp),
             enabled = !isSubmitting,
             shape = RoundedCornerShape(50.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Dark)
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Red,
+                contentColor = Color.White,
+                disabledContainerColor = DisabledBg,
+                disabledContentColor = DisabledText
+            )
         ) {
             Icon(Icons.Default.Send, null, modifier = Modifier.size(18.dp))
+
             Spacer(modifier = Modifier.width(8.dp))
+
             Text(
                 text = if (isSubmitting) "Confirmando..." else "Confirmar pedido",
                 fontSize = 15.sp,
@@ -1468,15 +2079,10 @@ private fun calcularPrecioVehiculo(
 ): Double {
     return when (vehiculo) {
         "Motorizado" -> {
-            val kmExtra = if (distanciaKm > 15.0) distanciaKm - 15.0 else 0.0
-
             if (tarifaMotorizado == "plana") {
-                if ((pesoKg ?: 0.0) <= 2.5) {
-                    10.0
-                } else {
-                    10.0 + kmExtra
-                }
+                10.0
             } else {
+                val kmExtra = (distanciaKm - 5.0).coerceAtLeast(0.0)
                 10.0 + kmExtra
             }
         }
@@ -1494,111 +2100,6 @@ private fun calcularPrecioVehiculo(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CategorySelector(
-    selected: String,
-    onSelect: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    val categorias = listOf(
-        "Documentos",
-        "Ropa",
-        "Calzado",
-        "Accesorios",
-        "Electrónicos",
-        "Cosméticos",
-        "Medicinas",
-        "Alimentos",
-        "Otro"
-    )
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded },
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        OutlinedTextField(
-            value = selected,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Categoría del pedido") },
-            trailingIcon = {
-                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
-            },
-            modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp)
-        )
-
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            categorias.forEach { categoria ->
-                DropdownMenuItem(
-                    text = { Text(categoria) },
-                    onClick = {
-                        onSelect(categoria)
-                        expanded = false
-                    }
-                )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PackageSizeSelector(
-    selected: String,
-    onSelect: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    val sizes = listOf(
-        "Pequeño - hasta 5 kg",
-        "Mediano - 5 a 20 kg",
-        "Grande - 20 a 100 kg"
-    )
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded },
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        OutlinedTextField(
-            value = selected,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Tamaño del paquete") },
-            trailingIcon = {
-                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
-            },
-            modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp)
-        )
-
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            sizes.forEach { size ->
-                DropdownMenuItem(
-                    text = { Text(size) },
-                    onClick = {
-                        onSelect(size)
-                        expanded = false
-                    }
-                )
-            }
-        }
-    }
-}
-
 private fun textPart(value: String): RequestBody {
     return value.toRequestBody("text/plain".toMediaTypeOrNull())
 }
@@ -1691,7 +2192,7 @@ private fun DestinatarioPagaSwitch(
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) },
         shape = RoundedCornerShape(16.dp),
-        color = if (checked) Color(0xFFEAF2FF) else LightBg,
+        color = if (checked) SoftBlueBg else LightBg,
         border = BorderStroke(
             width = 2.dp,
             color = if (checked) Blue else Border
@@ -1731,10 +2232,506 @@ private fun DestinatarioPagaSwitch(
                     checkedThumbColor = Color.White,
                     checkedTrackColor = Blue,
                     uncheckedThumbColor = Color.White,
-                    uncheckedTrackColor = Color(0xFFBDBDBD),
+                    uncheckedTrackColor = DisabledText,
                     uncheckedBorderColor = Color.Transparent
                 )
             )
         }
     }
+}
+@Composable
+private fun ContactoPedidoPopup(
+    senderPhone: String,
+    receiverPhone: String,
+    onSenderPhoneChange: (String) -> Unit,
+    onReceiverPhoneChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onContinue: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardBg,
+        shape = RoundedCornerShape(28.dp),
+        title = {
+            Column {
+                Box(
+                    modifier = Modifier
+                        .width(44.dp)
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(DisabledText)
+                        .align(Alignment.CenterHorizontally)
+                )
+
+                Spacer(modifier = Modifier.height(22.dp))
+
+                Text(
+                    text = "Datos de contacto",
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Dark
+                )
+
+                Text(
+                    text = "Ingresa los teléfonos para coordinar el recojo y la entrega.",
+                    fontSize = 14.sp,
+                    color = Muted,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+
+                OutlinedTextField(
+                    value = senderPhone,
+                    onValueChange = {
+                        onSenderPhoneChange(
+                            it.filter { c -> c.isDigit() }.take(9)
+                        )
+                    },
+                    label = { Text("Teléfono del remitente") },
+                    placeholder = { Text("Ej. 987654321") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Call,
+                            contentDescription = null,
+                            tint = Blue
+                        )
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(18.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Blue,
+                        unfocusedBorderColor = Border,
+                        focusedTextColor = Dark,
+                        unfocusedTextColor = Dark,
+                        cursorColor = Blue
+                    )
+
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                OutlinedTextField(
+                    value = receiverPhone,
+                    onValueChange = {
+                        onReceiverPhoneChange(
+                            it.filter { c -> c.isDigit() }.take(9)
+                        )
+                    },
+                    label = { Text("Teléfono del destinatario") },
+                    placeholder = { Text("Ej. 912345678") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.PhoneAndroid,
+                            contentDescription = null,
+                            tint = Green
+                        )
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(18.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Blue,
+                        unfocusedBorderColor = Border,
+                        focusedTextColor = Dark,
+                        unfocusedTextColor = Dark,
+                        cursorColor = Blue
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFFFFF8F0))
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = Color(0xFFF97316),
+                        modifier = Modifier.size(18.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Text(
+                        text = "Estos números se usarán solo para coordinar el servicio del pedido.",
+                        color = Color(0xFF92400E),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 16.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Button(
+                    onClick = onContinue,
+                    enabled = senderPhone.length == 9 && receiverPhone.length == 9,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Blue,
+                        contentColor = Color.White,
+                        disabledContainerColor = DisabledBg,
+                        disabledContentColor = DisabledText
+                    )
+                ) {
+                    Text(
+                        text = "Continuar",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Cancelar",
+                        color = Red,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {}
+    )
+}
+@Composable
+private fun FotoPaquetePopup(
+    fotoPaqueteUri: Uri?,
+    onSelectPhoto: () -> Unit,
+    onDismiss: () -> Unit,
+    onContinue: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardBg,
+        shape = RoundedCornerShape(28.dp),
+        title = {
+            Column {
+                Box(
+                    modifier = Modifier
+                        .width(44.dp)
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(DisabledText)
+                        .align(Alignment.CenterHorizontally)
+                )
+
+                Spacer(modifier = Modifier.height(22.dp))
+
+                Text(
+                    text = "Foto del paquete",
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Dark
+                )
+
+                Text(
+                    text = "Agrega una foto para que el repartidor identifique mejor el paquete.",
+                    fontSize = 14.sp,
+                    color = Muted,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(
+                            if (fotoPaqueteUri != null) Color(0xFFEAFBF0)
+                            else Color(0xFFF5F5F5)
+                        )
+                        .border(
+                            width = 1.5.dp,
+                            color = if (fotoPaqueteUri != null) Green else Border,
+                            shape = RoundedCornerShape(22.dp)
+                        )
+                        .clickable { onSelectPhoto() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            modifier = Modifier
+                                .size(54.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (fotoPaqueteUri != null) Green.copy(alpha = 0.12f)
+                                    else Blue.copy(alpha = 0.10f)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (fotoPaqueteUri != null)
+                                    Icons.Default.CheckCircle
+                                else
+                                    Icons.Default.PhotoCamera,
+                                contentDescription = null,
+                                tint = if (fotoPaqueteUri != null) Green else Blue,
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            text = if (fotoPaqueteUri != null)
+                                "Foto agregada correctamente"
+                            else
+                                "Agregar foto del paquete",
+                            color = Dark,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Black
+                        )
+
+                        Text(
+                            text = if (fotoPaqueteUri != null)
+                                "Puedes cambiarla si deseas"
+                            else
+                                "Toca aquí para seleccionar una imagen",
+                            color = Muted,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFFFFF8F0))
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = Color(0xFFF97316),
+                        modifier = Modifier.size(18.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Text(
+                        text = "La foto ayuda a evitar confusiones durante el recojo y la entrega.",
+                        color = Color(0xFF92400E),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 16.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Button(
+                    onClick = onContinue,
+                    enabled = fotoPaqueteUri != null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Blue,
+                        disabledContainerColor = DisabledText
+                    )
+                ) {
+                    Text(
+                        text = "Continuar",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Cancelar",
+                        color = Red,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {}
+    )
+}
+@Composable
+private fun ComentarioRepartidorPopup(
+    comentario: String,
+    onComentarioChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onSkip: () -> Unit,
+    onFinish: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardBg,
+        shape = RoundedCornerShape(28.dp),
+        title = {
+            Column {
+                Box(
+                    modifier = Modifier
+                        .width(44.dp)
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(DisabledText)
+                        .align(Alignment.CenterHorizontally)
+                )
+
+                Spacer(modifier = Modifier.height(22.dp))
+
+                Text(
+                    text = "Comentario para el repartidor",
+                    fontSize = 25.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Dark
+                )
+
+                Text(
+                    text = "Puedes agregar una indicación especial. Este paso es opcional.",
+                    fontSize = 14.sp,
+                    color = Muted,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+
+                OutlinedTextField(
+                    value = comentario,
+                    onValueChange = onComentarioChange,
+                    placeholder = {
+                        Text(
+                            text = "Ej. Llamar al llegar, preguntar por recepción, tocar el timbre...",
+                            color = Muted
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.ChatBubbleOutline,
+                            contentDescription = null,
+                            tint = Blue
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 4,
+                    singleLine = false,
+                    shape = RoundedCornerShape(18.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Blue,
+                        unfocusedBorderColor = Border,
+                        focusedTextColor = Dark,
+                        unfocusedTextColor = Dark,
+                        cursorColor = Blue
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(SoftBlueBg)
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = Blue,
+                        modifier = Modifier.size(18.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Text(
+                        text = "Este mensaje ayudará al repartidor a coordinar mejor el recojo o la entrega.",
+                        color = Color(0xFF123B8F),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 16.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+                Button(
+                    onClick = onFinish,
+                    enabled = comentario.trim().isNotEmpty(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Blue,
+                        contentColor = Color.White,
+                        disabledContainerColor = DisabledBg,
+                        disabledContentColor = DisabledText
+                    )
+                ) {
+                    Text(
+                        text = "Finalizar",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+
+                TextButton(
+                    onClick = onSkip,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Omitir comentario",
+                        color = Blue,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Cancelar",
+                        color = Red,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {}
+    )
 }
