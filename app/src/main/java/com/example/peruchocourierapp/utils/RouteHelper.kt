@@ -150,33 +150,3 @@ fun obtenerRuta(
 ): List<LatLng> {
     return obtenerRutaCompleta(origin, destination).puntos
 }
-
-fun calcularTarifaYango(
-    distanciaKm: Double,
-    tamanoPaquete: String
-): Double {
-    val base = when (tamanoPaquete.lowercase()) {
-        "pequeño", "pequeno" -> 6.0
-        "mediano" -> 9.0
-        "grande" -> 14.0
-        else -> 8.0
-    }
-
-    val precioPorKm = when (tamanoPaquete.lowercase()) {
-        "pequeño", "pequeno" -> 1.20
-        "mediano" -> 1.60
-        "grande" -> 2.30
-        else -> 1.50
-    }
-
-    val minimo = when (tamanoPaquete.lowercase()) {
-        "pequeño", "pequeno" -> 8.0
-        "mediano" -> 12.0
-        "grande" -> 18.0
-        else -> 10.0
-    }
-
-    val total = base + (distanciaKm * precioPorKm)
-
-    return maxOf(total, minimo)
-}

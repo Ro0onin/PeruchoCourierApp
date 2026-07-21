@@ -12,8 +12,8 @@ android {
         applicationId = "com.jeanpier.peruchocourier"
         minSdk = 24
         targetSdk = 36
-        versionCode = 25
-        versionName = "1.0.24"
+        versionCode = 29
+        versionName = "1.0.28"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val mapsApiKey = rootProject.file("local.properties")
             .readLines()
@@ -78,6 +78,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:21.2.0")
     implementation("com.google.android.libraries.places:places:4.1.0")
     implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.compose.animation)
 
 
 

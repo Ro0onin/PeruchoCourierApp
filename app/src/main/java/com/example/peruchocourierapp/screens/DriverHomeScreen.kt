@@ -204,7 +204,6 @@ fun DriverHomeScreen(navController: NavController) {
                             Text("Entrega: ${order.dropoff_address ?: order.destino ?: "-"}", color = cardTextColor)
                             Text("Descripción: ${order.descripcion ?: "-"}", color = cardTextColor)
                             Text("Distancia: ${order.distancia_km ?: "-"} km", color = cardTextColor)
-                            Text("Tamaño: ${order.tamano_paquete ?: "-"}", color = cardTextColor)
                             Text("Método de pago: ${order.metodo_pago ?: "-"}", color = cardTextColor)
                             Text("Total: S/ ${order.total ?: "-"}", color = cardTextColor)
                             Text("Estado: ${order.estado ?: "-"}", color = cardTextColor)

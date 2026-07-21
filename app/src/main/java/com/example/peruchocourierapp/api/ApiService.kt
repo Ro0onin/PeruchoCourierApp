@@ -334,6 +334,45 @@ interface ApiService {
         @Part("driver_email") driverEmail: RequestBody,
         @Part foto_entrega: MultipartBody.Part
     ): Call<BasicResponse>
+    @Multipart
+    @POST("add_international_product.php")
+    suspend fun addInternationalProduct(
+
+        @Part("envio_id")
+        envioId: RequestBody,
+
+        @Part("user_email")
+        userEmail: RequestBody,
+
+        @Part("web_compra")
+        webCompra: RequestBody,
+
+        @Part("producto")
+        producto: RequestBody,
+
+        @Part("tracking")
+        tracking: RequestBody,
+
+        @Part("precio_compra")
+        precioCompra: RequestBody,
+
+        @Part("peso_estimado")
+        pesoEstimado: RequestBody,
+
+        @Part("comentario")
+        comentario: RequestBody,
+
+        @Part
+        facturaPdf: MultipartBody.Part
+
+    ): BasicResponse
+
+    @FormUrlEncoded
+    @POST("solicitar_pago_internacional.php")
+    fun solicitarPagoInternacional(
+        @Field("envio_id") envioId: Int,
+        @Field("user_email") userEmail: String
+    ): Call<BasicResponse>
 
 
 }

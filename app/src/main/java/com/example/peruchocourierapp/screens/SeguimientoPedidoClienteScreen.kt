@@ -13,12 +13,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeliveryDining
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -49,6 +51,7 @@ import retrofit2.Callback
 import retrofit2.Response
 import android.net.Uri
 import android.util.Log
+import androidx.compose.foundation.border
 import com.example.peruchocourierapp.theme.ThemeManager
 import com.google.android.gms.maps.model.MapStyleOptions
 
@@ -77,7 +80,7 @@ private data class TrackingColors(
 
 @Composable
 private fun trackingColors(): TrackingColors {
-    val dark = isSystemInDarkTheme()
+    val dark = ThemeManager.isDarkMode.value
 
     return if (dark) {
         TrackingColors(
@@ -92,7 +95,7 @@ private fun trackingColors(): TrackingColors {
             topIcon = Color(0xFFF8FAFC),
             errorBg = Color(0xFF3F1717),
             errorText = Color(0xFFFFB4B4),
-            primaryButton = Color(0xFFF8FAFC),
+            primaryButton = TrackRed,
             successBg = Color(0xFF14532D),
             successText = Color(0xFFDCFCE7),
             warningBg = Color(0xFF451A03),
@@ -112,7 +115,7 @@ private fun trackingColors(): TrackingColors {
             topIcon = Color(0xFF1A1A1A),
             errorBg = Color(0xFFFFF0F0),
             errorText = TrackRed,
-            primaryButton = Color(0xFF1A1A1A),
+            primaryButton = TrackRed,
             successBg = Color(0xFFD1FAE5),
             successText = Color(0xFF059669),
             warningBg = Color(0xFFFFF4E8),
@@ -335,19 +338,31 @@ fun SeguimientoPedidoClienteScreen(
 
     BottomSheetScaffold(
         scaffoldState = scaffoldState,
-        sheetPeekHeight = 108.dp,
+        sheetPeekHeight = 116.dp,
         sheetContainerColor = colors.sheetBg,
         sheetShadowElevation = 20.dp,
         sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         sheetDragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(top = 10.dp, bottom = 6.dp)
-                    .width(46.dp)
-                    .height(5.dp)
-                    .clip(RoundedCornerShape(50.dp))
-                    .background(colors.border)
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .background(
+                            brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                listOf(TrackRed, TrackBlue)
+                            )
+                        )
+                )
+                Box(
+                    modifier = Modifier
+                        .padding(top = 9.dp, bottom = 5.dp)
+                        .width(38.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(50.dp))
+                        .background(colors.border)
+                )
+            }
         },
         sheetContent = {
             SeguimientoBottomSheetContent(
@@ -496,6 +511,7 @@ fun SeguimientoPedidoClienteScreen(
     }
 }
 
+
 @Composable
 private fun SeguimientoBottomSheetContent(
     colors: TrackingColors,
@@ -511,32 +527,46 @@ private fun SeguimientoBottomSheetContent(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 10.dp)
             .navigationBarsPadding()
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Default.DeliveryDining,
-                contentDescription = null,
-                tint = TrackBlue,
-                modifier = Modifier.size(22.dp)
-            )
+        Row(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(
+                        if (ThemeManager.isDarkMode.value) Color(0xFFF8FAFC)
+                        else Color(0xFF111A33)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DeliveryDining,
+                    contentDescription = null,
+                    tint = if (ThemeManager.isDarkMode.value) Color(0xFF111A33)
+                    else Color.White,
+                    modifier = Modifier.size(21.dp)
+                )
+            }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
             Text(
                 text = "Seguimiento del pedido",
-                fontSize = 17.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = colors.text
+                color = colors.text,
+                modifier = Modifier.weight(1f)
             )
         }
-
-        Spacer(modifier = Modifier.height(14.dp))
 
         when {
             isLoading -> {
                 Row(
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -545,24 +575,18 @@ private fun SeguimientoBottomSheetContent(
                         strokeWidth = 2.dp,
                         color = TrackBlue
                     )
-
-                    Text(
-                        text = "Buscando tu pedido activo...",
-                        color = colors.muted,
-                        fontSize = 13.sp
-                    )
+                    Text("Cargando seguimiento...", color = colors.muted, fontSize = 13.sp)
                 }
             }
 
             errorMessage.isNotEmpty() -> {
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.padding(horizontal = 18.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = colors.errorBg
                 ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
+                        modifier = Modifier.fillMaxWidth().padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -572,17 +596,15 @@ private fun SeguimientoBottomSheetContent(
                             tint = TrackRed,
                             modifier = Modifier.size(20.dp)
                         )
-
                         Column {
                             Text(
-                                text = "Sin pedido activo",
+                                "No se pudo cargar el seguimiento",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.errorText
                             )
-
                             Text(
-                                text = errorMessage,
+                                errorMessage,
                                 fontSize = 12.sp,
                                 color = colors.muted,
                                 modifier = Modifier.padding(top = 2.dp)
@@ -595,135 +617,245 @@ private fun SeguimientoBottomSheetContent(
 
                 Button(
                     onClick = onRetry,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.padding(horizontal = 18.dp).fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = colors.primaryButton,
-                        contentColor = if (isSystemInDarkTheme()) Color(0xFF0F172A) else Color.White
+                        containerColor = TrackRed,
+                        contentColor = Color.White
                     )
                 ) {
-                    Text(
-                        text = "Reintentar",
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("Reintentar", fontWeight = FontWeight.Bold)
                 }
+
+                Spacer(modifier = Modifier.height(18.dp))
             }
 
             activeOrder != null -> {
-                EstadoBadge(colors = colors, estado = currentStatus)
-
-                Spacer(modifier = Modifier.height(12.dp))
+                EstadoSello(colors, currentStatus)
 
                 if (driverPoint != null && duracionMin in 0..10) {
-                    LlegadaProximaCard(colors = colors, minutos = duracionMin)
-
                     Spacer(modifier = Modifier.height(12.dp))
+                    LlegadaProximaCard(colors = colors, minutos = duracionMin)
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = colors.chipBg,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        DireccionRow(
-                            colors = colors,
-                            texto = activeOrder.pickup_address ?: "-",
-                            label = "Recojo",
-                            icon = R.drawable.ic_pin_recojo
-                        )
+                Spacer(modifier = Modifier.height(12.dp))
 
-                        Box(
-                            modifier = Modifier
-                                .padding(start = 16.dp)
-                                .width(1.5.dp)
-                                .height(12.dp)
-                                .background(colors.border)
-                        )
+                RutaTicket(
+                    colors = colors,
+                    pickupAddress = activeOrder.pickup_address ?: "-",
+                    dropoffAddress = activeOrder.dropoff_address ?: "-"
+                )
 
-                        DireccionRow(
-                            colors = colors,
-                            texto = activeOrder.dropoff_address ?: "-",
-                            label = "Entrega",
-                            icon = R.drawable.ic_pin_entrega
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
+                TicketDivider(colors)
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    InfoChip(
-                        colors = colors,
-                        label = "Pago",
-                        value = activeOrder.metodo_pago ?: "-",
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    InfoChip(
-                        colors = colors,
-                        label = "Distancia",
-                        value = "${activeOrder.distancia_km ?: "-"} km",
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    InfoChip(
-                        colors = colors,
-                        label = "Total",
-                        value = "S/ ${activeOrder.total ?: "-"}",
-                        valueColor = TrackBlue,
-                        modifier = Modifier.weight(1f)
-                    )
-                    InfoChip(
-                        colors = colors,
-                        label = "Tiempo",
-                        value = "$duracionMin min",
-                        valueColor = TrackBlue,
-                        modifier = Modifier.weight(1f)
-                    )
+                    TicketStat("Pago", activeOrder.metodo_pago ?: "-", Modifier.weight(1f), TrackBlue)
+                    TicketVerticalDivider(colors)
+                    TicketStat("Distancia", "${activeOrder.distancia_km ?: "-"} km", Modifier.weight(1f))
+                    TicketVerticalDivider(colors)
+                    TicketStat("Total", "S/ ${activeOrder.total ?: "-"}", Modifier.weight(1f))
+                    TicketVerticalDivider(colors)
+                    TicketStat("Tiempo", "$duracionMin min", Modifier.weight(1f), TrackBlue)
                 }
-                Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
                     onClick = {
-                        Log.d("CHAT_TEST", "Boton chat presionado")
-                        Log.d("CHAT_DEBUG", "ORDER ID = ${activeOrder?.id}")
-                        Log.d("CHAT_DEBUG", "DRIVER = ${activeOrder?.driver_email}")
-
-
-                        val order = activeOrder ?: return@Button
-
-                        val driverEmail =
-                            order.driver_email ?: return@Button
-
+                        val driverEmail = activeOrder.driver_email ?: return@Button
                         navController.navigate(
-                            "chat_pedido/${order.id}/${Uri.encode(driverEmail)}"
+                            "chat_pedido/${activeOrder.id}/${Uri.encode(driverEmail)}"
                         )
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    shape = RoundedCornerShape(14.dp),
+                    enabled = !activeOrder.driver_email.isNullOrBlank(),
+                    modifier = Modifier.padding(horizontal = 18.dp).fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(13.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = TrackBlue
+                        containerColor = TrackRed,
+                        contentColor = Color.White,
+                        disabledContainerColor = colors.border,
+                        disabledContentColor = colors.muted
                     )
                 ) {
-                    Text(
-                        text = "💬 Chat con repartidor",
-                        fontWeight = FontWeight.Bold
-                    )
+                    Icon(Icons.Default.ChatBubbleOutline, null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Chat con repartidor", fontWeight = FontWeight.Bold)
                 }
+
+                Spacer(modifier = Modifier.height(20.dp))
             }
         }
     }
+}
+
+@Composable
+private fun EstadoSello(
+    colors: TrackingColors,
+    estado: String
+) {
+    val norm = normalizarEstado(estado)
+
+    val color = when (norm) {
+        "esperando_repartidor",
+        "buscando",
+        "asignado" -> TrackBlue
+
+        "recogido" -> colors.warningText
+
+        "en_camino",
+        "entregado" -> colors.successText
+
+        "pendiente_pago" -> colors.warningText
+
+        else -> colors.muted
+    }
+
+    Row(
+        modifier = Modifier
+            .padding(horizontal = 18.dp)
+            .graphicsLayer(rotationZ = -2f)
+            .border(
+                width = 2.dp,
+                color = color,
+                shape = RoundedCornerShape(7.dp)
+            )
+            .padding(
+                horizontal = 11.dp,
+                vertical = 6.dp
+            ),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
+
+        Spacer(modifier = Modifier.width(7.dp))
+
+        Text(
+            text = textoEstado(norm).uppercase(),
+            color = color,
+            fontSize = 10.5.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 0.5.sp
+        )
+    }
+}
+
+@Composable
+private fun RutaTicket(
+    colors: TrackingColors,
+    pickupAddress: String,
+    dropoffAddress: String
+) {
+    Column(modifier = Modifier.padding(horizontal = 18.dp)) {
+        TicketRouteRow(colors, "Recojo", pickupAddress, true, true)
+        TicketRouteRow(colors, "Entrega", dropoffAddress, false, false)
+    }
+}
+
+@Composable
+private fun TicketRouteRow(
+    colors: TrackingColors,
+    label: String,
+    value: String,
+    isPickup: Boolean,
+    showLine: Boolean
+) {
+    Row(verticalAlignment = Alignment.Top) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.width(18.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(colors.sheetBg)
+                    .border(
+                        2.dp,
+                        if (isPickup) Color(0xFF12805A) else TrackRed,
+                        CircleShape
+                    )
+            )
+            if (showLine) {
+                Box(
+                    Modifier.width(1.5.dp).height(32.dp).background(colors.border)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Column(
+            modifier = Modifier.weight(1f).padding(bottom = if (showLine) 12.dp else 6.dp)
+        ) {
+            Text(
+                label.uppercase(),
+                color = colors.muted,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.4.sp
+            )
+            Text(
+                value,
+                color = colors.text,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(top = 2.dp),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun TicketDivider(colors: TrackingColors) {
+    Box(
+        Modifier
+            .padding(horizontal = 18.dp)
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(colors.border)
+    )
+}
+
+@Composable
+private fun RowScope.TicketStat(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    valueColor: Color? = null
+) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            label.uppercase(),
+            color = Color(0xFF6B7590),
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.4.sp
+        )
+        Text(
+            value,
+            color = valueColor ?: if (ThemeManager.isDarkMode.value) Color.White else Color(0xFF111A33),
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.ExtraBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 5.dp)
+        )
+    }
+}
+
+@Composable
+private fun TicketVerticalDivider(colors: TrackingColors) {
+    Box(Modifier.width(1.dp).height(34.dp).background(colors.border))
 }
 
 @Composable

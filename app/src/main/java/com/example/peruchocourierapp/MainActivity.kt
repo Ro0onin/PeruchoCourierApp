@@ -222,6 +222,11 @@ class MainActivity : ComponentActivity() {
             composable("forgot_password") {
                 ForgotPasswordScreen(navController)
             }
+            composable("vista_ruta_pedido") {
+                VistaRutaPedidoScreen(
+                    navController = navController
+                )
+            }
         }
     }
 

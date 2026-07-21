@@ -1027,7 +1027,6 @@ fun PedidoEnCursoScreen(
                     DetalleTexto("Entrega", activeOrder!!.dropoff_address ?: "-")
                     DetalleTexto("Descripción", activeOrder!!.descripcion ?: "-")
                     DetalleTexto("Categoría", activeOrder!!.categoria ?: "-")
-                    DetalleTexto("Tamaño del paquete", activeOrder!!.tamano_paquete ?: "-")
                     DetalleTexto("Distancia", "${activeOrder!!.distancia_km ?: "-"} km")
                     DetalleTexto("Método de pago", activeOrder!!.metodo_pago ?: "-")
                     DetalleTexto("Total", "S/ ${activeOrder!!.total ?: "-"}")

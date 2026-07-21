@@ -1,5 +1,7 @@
 package com.example.peruchocourierapp.models
 
+import com.google.gson.annotations.SerializedName
+
 data class Order(
     val id: Int? = null,
     val user_email: String? = null,
@@ -27,7 +29,6 @@ data class Order(
     val categoria: String? = null,
     val foto_paquete: String? = null,
     val comentarios_repartidor: String? = null,
-    val tamano_paquete: String? = null,
     val tipo_vehiculo: String? = null,
     val distancia_km: String? = null,
 
@@ -39,6 +40,13 @@ data class Order(
     val fecha_llegada: String? = null,
     val peso_estimado: String? = null,
     val factura_pdf: String? = null,
+
+    // Seguimiento visual
+    val paso_visual: String? = null,
+    val estado_nombre: String? = null,
+    val estado_descripcion: String? = null,
+    val permite_agregar_producto: Int? = 0,
+    val productos_adicionales: List<InternationalProduct> = emptyList(),
 
     // Comunes
     val metodo_pago: String? = null,
@@ -55,4 +63,22 @@ data class Order(
     val driver_location_updated_at: String? = null,
     val tarifa_motorizado: String? = null,
     val destinatario_paga: Int? = 0,
+
+    @SerializedName("estado_pago")
+    val estadoPago: String? = null,
+
+    @SerializedName("pago_metodo")
+    val pagoMetodo: String? = null,
+
+    @SerializedName("pago_observacion")
+    val pagoObservacion: String? = null,
+
+    @SerializedName("pago_solicitado_at")
+    val pagoSolicitadoAt: String? = null,
+
+    @SerializedName("pago_confirmado_at")
+    val pagoConfirmadoAt: String? = null,
+
+    @SerializedName("pago_confirmado_por")
+    val pagoConfirmadoPor: String? = null,
 )

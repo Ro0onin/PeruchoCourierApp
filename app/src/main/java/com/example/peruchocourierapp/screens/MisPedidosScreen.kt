@@ -1,11 +1,14 @@
 package com.example.peruchocourierapp.screens
 
 import android.content.Intent
+import android.provider.OpenableColumns
 import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -18,12 +21,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AddShoppingCart
 import androidx.compose.material.icons.outlined.ArrowForwardIos
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material.icons.outlined.HeadsetMic
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Language
@@ -42,9 +48,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -61,11 +67,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.Canvas
+import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -84,10 +89,17 @@ import com.example.peruchocourierapp.models.BasicResponse
 import com.example.peruchocourierapp.models.GetOrdersResponse
 import com.example.peruchocourierapp.models.Order
 import com.example.peruchocourierapp.theme.ThemeManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
 import java.text.Normalizer
 
 private val PcInk = Color(0xFF111A33)
@@ -209,7 +221,15 @@ fun MisPedidosScreen(navController: NavController) {
                     isLoading = false
 
                     if (response.isSuccessful && response.body()?.success == true) {
-                        orders = response.body()?.orders.orEmpty()
+                        val nuevosPedidos = response.body()?.orders.orEmpty()
+                        orders = nuevosPedidos
+
+                        val pedidoSeleccionadoId = selectedOrder?.id
+                        if (pedidoSeleccionadoId != null) {
+                            selectedOrder = nuevosPedidos.firstOrNull {
+                                it.id == pedidoSeleccionadoId
+                            } ?: selectedOrder
+                        }
                     } else {
                         errorMessage = "No se pudieron cargar los pedidos"
                     }
@@ -326,7 +346,15 @@ fun MisPedidosScreen(navController: NavController) {
                         items(filteredOrders) { order ->
                             PedidoTicketCard(
                                 order = order,
-                                onClick = { selectedOrder = order }
+                                onClick = { selectedOrder = order },
+                                onPay = {
+                                    solicitarPagoYabrirWhatsApp(
+                                        context = context,
+                                        order = order,
+                                        userEmail = sessionManager.getUserEmail().orEmpty(),
+                                        onUpdated = { cargarPedidos() }
+                                    )
+                                }
                             )
                         }
 
@@ -357,6 +385,9 @@ fun MisPedidosScreen(navController: NavController) {
         ) {
             PedidoDetalleSheet(
                 order = selectedOrder!!,
+                onProductAdded = {
+                    cargarPedidos()
+                },
                 onClose = { selectedOrder = null },
                 onTrack = {
                     val id = selectedOrder?.id ?: 0
@@ -369,6 +400,18 @@ fun MisPedidosScreen(navController: NavController) {
                     context.startActivity(
                         Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$numero?text=$mensaje"))
                     )
+                },
+                onPay = {
+                    selectedOrder?.let { pedido ->
+                        solicitarPagoYabrirWhatsApp(
+                            context = context,
+                            order = pedido,
+                            userEmail = sessionManager.getUserEmail().orEmpty(),
+                            onUpdated = {
+                                cargarPedidos()
+                            }
+                        )
+                    }
                 },
                 onCancel = {
                     orderToCancel = selectedOrder
@@ -597,54 +640,123 @@ private fun FilterChipButton(
 @Composable
 private fun PedidoTicketCard(
     order: Order,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onPay: () -> Unit
 ) {
     val colors = misPedidosColors()
-    val isNacional = order.tipo_envio == "nacional" || order.tipo_envio.isNullOrBlank()
+    val isNacional =
+        order.tipo_envio == "nacional" ||
+                order.tipo_envio.isNullOrBlank()
+
     val estado = normalizarEstado(order.estado)
-    val totalText = if (isNacional) "S/ ${order.total ?: "-"}" else "$${order.total ?: "-"}"
-    val isDelivered = estado == "entregado"
+    val estadoNombre = order.estado_nombre
+        ?.takeIf { it.isNotBlank() }
+        ?: estadoLegible(estado)
+
+    val descripcion = order.estado_descripcion
+        ?.takeIf { it.isNotBlank() }
+        ?: if (isNacional) {
+            descripcionEstadoNacional(estado)
+        } else {
+            descripcionEstadoInternacional(estado)
+        }
+
+    val pasoVisual = if (isNacional) {
+        "nacional"
+    } else {
+        resolverPasoVisualInternacional(
+            pasoVisualApi = order.paso_visual,
+            estado = estado
+        )
+    }
+
+    val accent = colorPasoVisual(
+        pasoVisual = pasoVisual,
+        estado = estado
+    )
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = colors.card),
-        border = BorderStroke(1.dp, colors.line),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = colors.card
+        ),
+        border = BorderStroke(
+            1.dp,
+            accent.copy(alpha = 0.30f)
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 2.dp
+        )
     ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Image(
-                painter = painterResource(R.drawable.logo_perucho2),
-                contentDescription = null,
+        Column {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .align(Alignment.Center)
-                    .rotate(-18f)
-                    .alpha(0.15f),
-                contentScale = ContentScale.Fit
-            )
+                    .fillMaxWidth()
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                accent.copy(alpha = 0.16f),
+                                colors.card
+                            )
+                        )
+                    )
+                    .padding(16.dp)
+            ) {
+                Icon(
+                    imageVector = iconoPasoVisual(
+                        pasoVisual = pasoVisual,
+                        estado = estado
+                    ),
+                    contentDescription = null,
+                    tint = accent.copy(alpha = 0.08f),
+                    modifier = Modifier
+                        .size(120.dp)
+                        .align(Alignment.TopEnd)
+                        .offset(x = 24.dp, y = (-28).dp)
+                )
 
-            Column {
-                Box {
+                Column(
+                    modifier = Modifier.fillMaxWidth(0.84f)
+                ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, top = 15.dp, bottom = 10.dp),
-                        verticalAlignment = Alignment.Top
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(accent),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = iconoPasoVisual(
+                                    pasoVisual = pasoVisual,
+                                    estado = estado
+                                ),
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(23.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "Pedido #${order.id ?: 0}",
                                 color = colors.ink,
-                                fontSize = 17.sp,
+                                fontSize = 18.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 fontFamily = InterFont
                             )
 
                             Text(
-                                text = "${formatFecha(order.created_at)} · ${if (isNacional) "Nacional" else "Internacional"}",
+                                text = "${formatFecha(order.created_at)} · ${
+                                    if (isNacional) "Nacional" else "Internacional"
+                                }",
                                 color = colors.muted,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
@@ -660,114 +772,328 @@ private fun PedidoTicketCard(
                         )
                     }
 
-                    TicketStamp(
-                        estado = estado,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = 12.dp, end = 18.dp)
-                            .rotate(-6f)
-                    )
-                }
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                if (isNacional) {
-                    RouteTicketLine(
-                        pickup = order.pickup_address ?: order.origen ?: "-",
-                        dropoff = order.dropoff_address ?: order.destino ?: "-"
+                    Text(
+                        text = estadoNombre,
+                        color = accent,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = InterFont
                     )
 
-                    Column(
-                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        TicketInfoRow(
-                            icon = Icons.Outlined.Inventory2,
-                            text = "${order.categoria ?: "-"} · ${order.tamano_paquete ?: "-"}"
-                        )
+                    Spacer(modifier = Modifier.height(4.dp))
 
-                        TicketInfoRow(
-                            icon = Icons.Outlined.TwoWheeler,
-                            text = vehiculoLegible(order)
-                        )
-                    }
-                } else {
-                    Column(
-                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        TicketInfoRow(
-                            icon = Icons.Outlined.Language,
-                            text = "Compra en ${order.web_compra ?: "-"}"
-                        )
-
-                        TicketInfoRow(
-                            icon = Icons.Outlined.QrCode2,
-                            text = "Tracking: ${order.tracking ?: "-"}"
-                        )
-                    }
+                    Text(
+                        text = descripcion,
+                        color = colors.textSoft,
+                        fontSize = 12.5.sp,
+                        lineHeight = 18.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = InterFont,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
+            }
 
-                DashedDividerWithCuts()
+            HorizontalDivider(
+                color = colors.line.copy(alpha = 0.75f)
+            )
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            if (isNacional) {
+                Column(
+                    modifier = Modifier.padding(
+                        horizontal = 16.dp,
+                        vertical = 14.dp
+                    )
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "TOTAL",
-                            color = colors.muted,
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = InterFont,
-                            letterSpacing = 0.6.sp
-                        )
+                    RouteTicketLine(
+                        pickup = order.pickup_address
+                            ?: order.origen
+                            ?: "-",
+                        dropoff = order.dropoff_address
+                            ?: order.destino
+                            ?: "-"
+                    )
 
-                        Text(
-                            text = totalText,
-                            color = colors.ink,
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = MonoFont
-                        )
-                    }
+                    Spacer(modifier = Modifier.height(4.dp))
 
-                    when (order.metodo_pago?.lowercase()) {
-
-                        "yape" -> {
-                            Image(
-                                painter = painterResource(R.drawable.ic_yape2),
-                                contentDescription = "Yape",
-                                modifier = Modifier
-                                    .height(34.dp)
-                                    .width(34.dp),
-                                contentScale = ContentScale.Fit
-                            )
-                        }
-
-                        "plin" -> {
-                            Image(
-                                painter = painterResource(R.drawable.ic_plin),
-                                contentDescription = "Plin",
-                                modifier = Modifier
-                                    .height(34.dp)
-                                    .width(34.dp),
-                                contentScale = ContentScale.Fit
-                            )
-                        }
-
-                        else -> {
-                            Text(
-                                text = order.metodo_pago ?: "Pago",
-                                color = PcBlue,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = InterFont
-                            )
-                        }
-                    }
+                    TicketInfoRow(
+                        icon = Icons.Outlined.TwoWheeler,
+                        text = vehiculoLegible(order)
+                    )
                 }
+            } else {
+                Column(
+                    modifier = Modifier.padding(
+                        horizontal = 16.dp,
+                        vertical = 14.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+                    TicketInfoRow(
+                        icon = Icons.Outlined.Language,
+                        text = "Compra en ${order.web_compra ?: "-"}"
+                    )
+
+                    TicketInfoRow(
+                        icon = Icons.Outlined.QrCode2,
+                        text = "Tracking: ${order.tracking ?: "-"}"
+                    )
+
+                    InternationalMiniProgress(
+                        pasoVisual = pasoVisual,
+                        estado = estado
+                    )
+                }
+            }
+
+            HorizontalDivider(
+                color = colors.line.copy(alpha = 0.75f)
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 13.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "TOTAL",
+                        color = colors.muted,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = InterFont,
+                        letterSpacing = 0.6.sp
+                    )
+
+                    Text(
+                        text = if (isNacional) {
+                            "S/ ${order.total ?: "-"}"
+                        } else {
+                            "$${order.total ?: "-"}"
+                        },
+                        color = colors.ink,
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = MonoFont
+                    )
+                }
+
+                PaymentLogoOrText(
+                    metodoPago = order.metodo_pago
+                )
+            }
+
+            if (!isNacional) {
+                InternationalPaymentAction(
+                    order.estadoPago,
+                    onPay = onPay,
+                    modifier = Modifier.padding(
+                        start = 16.dp,
+                        end = 16.dp,
+                        bottom = 14.dp
+                    )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InternationalPaymentAction(
+    estadoPago: String?,
+    onPay: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = misPedidosColors()
+    val estado = normalizarEstadoPago(estadoPago)
+
+    when (estado) {
+        "pagado" -> {
+            Row(
+                modifier = modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(colors.greenTint)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.CheckCircle,
+                    contentDescription = null,
+                    tint = PcGreen,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(9.dp))
+                Text(
+                    text = "Pago confirmado",
+                    color = PcGreen,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = InterFont
+                )
+            }
+        }
+
+        "en_validacion" -> {
+            Row(
+                modifier = modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(colors.warningBg)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Schedule,
+                    contentDescription = null,
+                    tint = colors.warningText,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(9.dp))
+                Column {
+                    Text(
+                        text = "Pago en validación",
+                        color = colors.warningText,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = InterFont
+                    )
+                    Text(
+                        text = "Nuestro equipo confirmará el pago.",
+                        color = colors.warningText,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = InterFont
+                    )
+                }
+            }
+        }
+
+        else -> {
+            Button(
+                onClick = onPay,
+                modifier = modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF25D366),
+                    contentColor = Color.White
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Payments,
+                    contentDescription = null,
+                    modifier = Modifier.size(19.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (estado == "rechazado") "Volver a pagar" else "Ir a pagar",
+                    fontWeight = FontWeight.Black,
+                    fontFamily = InterFont
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaymentLogoOrText(
+    metodoPago: String?
+) {
+    when (metodoPago?.lowercase()) {
+        "yape" -> {
+            Image(
+                painter = painterResource(R.drawable.ic_yape2),
+                contentDescription = "Yape",
+                modifier = Modifier.size(34.dp),
+                contentScale = ContentScale.Fit
+            )
+        }
+
+        "plin" -> {
+            Image(
+                painter = painterResource(R.drawable.ic_plin),
+                contentDescription = "Plin",
+                modifier = Modifier.size(34.dp),
+                contentScale = ContentScale.Fit
+            )
+        }
+
+        else -> {
+            Text(
+                text = metodoPago ?: "Pago",
+                color = PcBlue,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = InterFont
+            )
+        }
+    }
+}
+
+@Composable
+private fun InternationalMiniProgress(
+    pasoVisual: String,
+    estado: String
+) {
+    val colors = misPedidosColors()
+    val stages = listOf(
+        "registro",
+        "almacen",
+        "despacho",
+        "desaduanaje",
+        "distribucion"
+    )
+
+    val currentIndex = when (pasoVisual) {
+        "registro" -> 0
+        "almacen" -> 1
+        "despacho" -> 2
+        "desaduanaje", "aduanas" -> 3
+        "distribucion", "entrega", "entregado" -> 4
+        else -> 0
+    }
+
+    val delivered = estado == "entregado" ||
+            pasoVisual == "entregado"
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        stages.forEachIndexed { index, _ ->
+            Box(
+                modifier = Modifier
+                    .size(9.dp)
+                    .clip(CircleShape)
+                    .background(
+                        when {
+                            delivered -> PcGreen
+                            index < currentIndex -> PcBlue
+                            index == currentIndex -> PcRed
+                            else -> colors.line
+                        }
+                    )
+            )
+
+            if (index != stages.lastIndex) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(2.dp)
+                        .background(
+                            if (delivered || index < currentIndex) {
+                                PcBlue.copy(alpha = 0.65f)
+                            } else {
+                                colors.line
+                            }
+                        )
+                )
             }
         }
     }
@@ -1020,9 +1346,11 @@ private fun EmptyOrdersBox(selectedFilter: String) {
 @Composable
 private fun PedidoDetalleSheet(
     order: Order,
+    onProductAdded: () -> Unit,
     onClose: () -> Unit,
     onTrack: () -> Unit,
     onSupport: () -> Unit,
+    onPay: () -> Unit,
     onCancel: () -> Unit
 ) {
     val colors = misPedidosColors()
@@ -1042,10 +1370,16 @@ private fun PedidoDetalleSheet(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        TrackingTimeline(
-            estado = estado,
-            isNacional = isNacional
-        )
+        if (isNacional) {
+            TrackingTimelineNacional(
+                estado = estado
+            )
+        } else {
+            InternationalTrackingSection(
+                order = order,
+                onProductAdded = onProductAdded
+            )
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -1075,7 +1409,6 @@ private fun PedidoDetalleSheet(
                 DetailGrid(
                     items = listOf(
                         "Categoría" to (order.categoria ?: "-"),
-                        "Tamaño" to (order.tamano_paquete ?: "-"),
                         "Vehículo" to vehiculoLegible(order),
                         "Distancia" to "${order.distancia_km ?: "-"} km"
                     )
@@ -1108,6 +1441,13 @@ private fun PedidoDetalleSheet(
                 title = "Compra internacional",
                 icon = Icons.Outlined.Language
             ) {
+                InternationalPurchaseHeader(
+                    number = 1,
+                    principal = true
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
                 DetailGrid(
                     items = listOf(
                         "Web" to (order.web_compra ?: "-"),
@@ -1117,9 +1457,63 @@ private fun PedidoDetalleSheet(
                     )
                 )
 
-                DetailLine("Productos", order.productos ?: "-")
+                DetailLine("Producto", order.productos ?: "-")
                 DetailLine("Precio compra", "$${order.precio_compra ?: "-"}")
-                DetailLine("Factura PDF", order.factura_pdf ?: "-")
+
+                if (!order.factura_pdf.isNullOrBlank()) {
+                    DetailLine("Factura PDF", order.factura_pdf)
+                }
+
+                order.productos_adicionales.forEachIndexed { index, producto ->
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    HorizontalDivider(
+                        color = colors.line
+                    )
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    InternationalPurchaseHeader(
+                        number = index + 2,
+                        principal = false
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    DetailGrid(
+                        items = listOf(
+                            "Web" to (producto.web_compra ?: "-"),
+                            "Tracking" to (producto.tracking ?: "-"),
+                            "Peso" to "${producto.peso_estimado ?: "-"} kg",
+                            "Precio" to "$${producto.precio_compra ?: "-"}"
+                        )
+                    )
+
+                    DetailLine(
+                        "Producto",
+                        producto.producto ?: "-"
+                    )
+                    DetailLine(
+                        "Factura PDF",
+                        producto.factura_pdf
+                            ?.takeIf { it.isNotBlank() }
+                            ?: "Sin factura adjunta"
+                    )
+
+                    if (!producto.comentario.isNullOrBlank()) {
+                        DetailLine(
+                            "Comentario",
+                            producto.comentario
+                        )
+                    }
+
+                    if (!producto.created_at.isNullOrBlank()) {
+                        DetailLine(
+                            "Agregado",
+                            formatFecha(producto.created_at)
+                        )
+                    }
+                }
             }
         }
 
@@ -1138,6 +1532,16 @@ private fun PedidoDetalleSheet(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Rastrear pedido", fontWeight = FontWeight.Black, fontFamily = InterFont)
             }
+
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+
+        if (!isNacional) {
+            InternationalPaymentAction(
+                order.estadoPago,
+                onPay = onPay,
+                modifier = Modifier.fillMaxWidth()
+            )
 
             Spacer(modifier = Modifier.height(10.dp))
         }
@@ -1173,6 +1577,90 @@ private fun PedidoDetalleSheet(
         }
 
         Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun InternationalPurchaseHeader(
+    number: Int,
+    principal: Boolean
+) {
+    val colors = misPedidosColors()
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                if (principal) {
+                    colors.blueTint
+                } else {
+                    colors.bg
+                }
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(RoundedCornerShape(11.dp))
+                .background(
+                    if (principal) PcBlue
+                    else Color(0xFFF59E0B)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = number.toString(),
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = InterFont
+            )
+        }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "COMPRA $number",
+                color = colors.ink,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = InterFont,
+                letterSpacing = 0.4.sp
+            )
+
+            Text(
+                text = if (principal) {
+                    "Compra principal"
+                } else {
+                    "Producto agregado"
+                },
+                color = colors.muted,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                fontFamily = InterFont
+            )
+        }
+
+        if (principal) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50.dp))
+                    .background(PcBlue.copy(alpha = 0.14f))
+                    .padding(horizontal = 9.dp, vertical = 5.dp)
+            ) {
+                Text(
+                    text = "PRINCIPAL",
+                    color = PcBlue,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = InterFont
+                )
+            }
+        }
     }
 }
 
@@ -1285,13 +1773,6 @@ private fun DetailHeroCard(
                             value = vehiculoLegible(order),
                             modifier = Modifier.weight(1f)
                         )
-
-                        MiniStat(
-                            icon = Icons.Outlined.Inventory2,
-                            label = "Paquete",
-                            value = order.tamano_paquete ?: "-",
-                            modifier = Modifier.weight(1f)
-                        )
                     } else {
                         MiniStat(
                             icon = Icons.Outlined.QrCode2,
@@ -1357,129 +1838,105 @@ private fun MiniStat(
     }
 }
 
+private data class InternationalVisualStage(
+    val key: String,
+    val label: String,
+    val icon: ImageVector
+)
+
+private data class InternationalHistoryStep(
+    val codes: Set<String>,
+    val label: String
+)
+
 @Composable
-private fun TrackingTimeline(
-    estado: String,
-    isNacional: Boolean
+private fun TrackingTimelineNacional(
+    estado: String
 ) {
     val colors = misPedidosColors()
-    val steps = if (isNacional) {
-        listOf(
-            "Pedido creado" to true,
-            "Esperando repartidor" to (estado in listOf(
-                "pendiente_pago",
-                "esperando_repartidor",
-                "asignado",
-                "recogiendo",
-                "recogido",
-                "en_camino",
-                "entregado"
-            )),
-            "Repartidor asignado" to (estado in listOf(
-                "asignado",
-                "recogiendo",
-                "recogido",
-                "en_camino",
-                "entregado"
-            )),
-            "Recogiendo paquete" to (estado in listOf(
-                "recogiendo",
-                "recogido",
-                "en_camino",
-                "entregado"
-            )),
-            "En camino" to (estado in listOf("en_camino", "entregado")),
-            "Entregado" to (estado == "entregado")
-        )
-    } else {
-        listOf(
-            "Pedido internacional registrado" to true,
-            "En revisión" to (estado in listOf(
-                "en_revision", "esperando_almacen", "recibido_en_almacen",
-                "en_consolidacion", "despachado", "transito_internacional",
-                "llego_a_peru", "desaduanaje", "pago_de_impuestos",
-                "liberado_por_aduanas", "en_distribucion", "en_ruta", "entregado"
-            )),
-            "Esperando almacén" to (estado in listOf(
-                "esperando_almacen", "recibido_en_almacen", "en_consolidacion",
-                "despachado", "transito_internacional", "llego_a_peru",
-                "desaduanaje", "pago_de_impuestos", "liberado_por_aduanas",
-                "en_distribucion", "en_ruta", "entregado"
-            )),
-            "Recibido en almacén" to (estado in listOf(
-                "recibido_en_almacen", "en_consolidacion", "despachado",
-                "transito_internacional", "llego_a_peru", "desaduanaje",
-                "pago_de_impuestos", "liberado_por_aduanas", "en_distribucion",
-                "en_ruta", "entregado"
-            )),
-            "En consolidación" to (estado in listOf(
-                "en_consolidacion", "despachado", "transito_internacional",
-                "llego_a_peru", "desaduanaje", "pago_de_impuestos",
-                "liberado_por_aduanas", "en_distribucion", "en_ruta", "entregado"
-            )),
-            "Despachado" to (estado in listOf(
-                "despachado", "transito_internacional", "llego_a_peru",
-                "desaduanaje", "pago_de_impuestos", "liberado_por_aduanas",
-                "en_distribucion", "en_ruta", "entregado"
-            )),
-            "Tránsito internacional" to (estado in listOf(
-                "transito_internacional", "llego_a_peru", "desaduanaje",
-                "pago_de_impuestos", "liberado_por_aduanas", "en_distribucion",
-                "en_ruta", "entregado"
-            )),
-            "Llegó a Perú" to (estado in listOf(
-                "llego_a_peru", "desaduanaje", "pago_de_impuestos",
-                "liberado_por_aduanas", "en_distribucion", "en_ruta", "entregado"
-            )),
-            "Desaduanaje" to (estado in listOf(
-                "desaduanaje", "pago_de_impuestos", "liberado_por_aduanas",
-                "en_distribucion", "en_ruta", "entregado"
-            )),
-            "Pago de impuestos" to (estado in listOf(
-                "pago_de_impuestos", "liberado_por_aduanas",
-                "en_distribucion", "en_ruta", "entregado"
-            )),
-            "Liberado por aduanas" to (estado in listOf(
-                "liberado_por_aduanas", "en_distribucion", "en_ruta", "entregado"
-            )),
-            "En distribución" to (estado in listOf(
-                "en_distribucion", "en_ruta", "entregado"
-            )),
-            "En ruta" to (estado in listOf("en_ruta", "entregado")),
-            "Entregado" to (estado == "entregado")
-        )
-    }
+    val darkMode = ThemeManager.isDarkMode.value
+
+    val completedCircle = if (darkMode) PcBlue else PcInk
+    val completedText = if (darkMode) colors.ink else PcInk
+    val pendingCircleBackground =
+        if (darkMode) Color(0xFF1E293B) else Color.White
+    val pendingCircleBorder =
+        if (darkMode) Color(0xFF94A3B8) else colors.line
+    val pendingText =
+        if (darkMode) Color(0xFF94A3B8) else PcMuted
+    val completedLine =
+        if (darkMode) Color(0xFF3B82F6) else PcBlue
+
+    val steps = listOf(
+        "Pedido creado" to true,
+        "Esperando repartidor" to (estado in listOf(
+            "pendiente_pago",
+            "esperando_repartidor",
+            "asignado",
+            "recogiendo",
+            "recogido",
+            "en_camino",
+            "entregado"
+        )),
+        "Repartidor asignado" to (estado in listOf(
+            "asignado",
+            "recogiendo",
+            "recogido",
+            "en_camino",
+            "entregado"
+        )),
+        "Recogiendo paquete" to (estado in listOf(
+            "recogiendo",
+            "recogido",
+            "en_camino",
+            "entregado"
+        )),
+        "En camino" to (estado in listOf(
+            "en_camino",
+            "entregado"
+        )),
+        "Entregado" to (estado == "entregado")
+    )
 
     DetailSection(
-        title = if (isNacional) "Seguimiento" else "Seguimiento internacional",
+        title = "Seguimiento",
         icon = Icons.Outlined.Schedule
     ) {
         steps.forEachIndexed { index, item ->
-            Row(verticalAlignment = Alignment.Top) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            val completed = item.second
+            val finalCompleted =
+                index == steps.lastIndex && completed
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Box(
                         modifier = Modifier
                             .size(18.dp)
                             .clip(CircleShape)
                             .background(
                                 when {
-                                    index == steps.lastIndex && item.second -> PcGreen
-                                    item.second -> PcInk
-                                    else -> Color.White
+                                    finalCompleted -> PcGreen
+                                    completed -> completedCircle
+                                    else -> pendingCircleBackground
                                 }
                             )
                             .border(
                                 2.dp,
                                 when {
-                                    index == steps.lastIndex && item.second -> PcGreen
-                                    item.second -> PcInk
-                                    else -> colors.line
+                                    finalCompleted -> PcGreen
+                                    completed -> completedCircle
+                                    else -> pendingCircleBorder
                                 },
                                 CircleShape
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (item.second) {
+                        if (completed) {
                             Icon(
                                 imageVector = Icons.Outlined.Check,
                                 contentDescription = null,
@@ -1494,7 +1951,10 @@ private fun TrackingTimeline(
                             modifier = Modifier
                                 .width(1.5.dp)
                                 .height(28.dp)
-                                .background(if (item.second) PcBlue else colors.line)
+                                .background(
+                                    if (completed) completedLine
+                                    else colors.line
+                                )
                         )
                     }
                 }
@@ -1503,14 +1963,1673 @@ private fun TrackingTimeline(
 
                 Text(
                     text = item.first,
-                    color = if (item.second) PcInk else PcMuted,
+                    color = when {
+                        finalCompleted -> PcGreen
+                        completed -> completedText
+                        else -> pendingText
+                    },
                     fontSize = 14.sp,
-                    fontWeight = if (index == steps.lastIndex && item.second) FontWeight.ExtraBold else FontWeight.SemiBold,
+                    fontWeight = when {
+                        finalCompleted -> FontWeight.ExtraBold
+                        completed -> FontWeight.Bold
+                        else -> FontWeight.SemiBold
+                    },
                     fontFamily = InterFont,
                     modifier = Modifier.padding(top = 1.dp)
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun InternationalTrackingSection(
+    order: Order,
+    onProductAdded: () -> Unit
+) {
+    val colors = misPedidosColors()
+    val estado = normalizarEstado(order.estado)
+
+    val pasoVisual = resolverPasoVisualInternacional(
+        pasoVisualApi = order.paso_visual,
+        estado = estado
+    )
+
+    val estadoNombre = order.estado_nombre
+        ?.takeIf { it.isNotBlank() }
+        ?: estadoLegible(estado)
+
+    val descripcion = order.estado_descripcion
+        ?.takeIf { it.isNotBlank() }
+        ?: descripcionEstadoInternacional(estado)
+
+    val stages = listOf(
+        InternationalVisualStage(
+            key = "registro",
+            label = "Registro",
+            icon = Icons.Outlined.Schedule
+        ),
+        InternationalVisualStage(
+            key = "almacen",
+            label = "Almacén",
+            icon = Icons.Outlined.Inventory2
+        ),
+        InternationalVisualStage(
+            key = "despacho",
+            label = "Despacho",
+            icon = Icons.Outlined.Language
+        ),
+        InternationalVisualStage(
+            key = "desaduanaje",
+            label = "Aduanas",
+            icon = Icons.Outlined.QrCode2
+        ),
+        InternationalVisualStage(
+            key = "distribucion",
+            label = "Entrega",
+            icon = Icons.Outlined.Route
+        )
+    )
+
+    val currentIndex = when (pasoVisual) {
+        "registro" -> 0
+        "almacen" -> 1
+        "despacho" -> 2
+        "desaduanaje", "aduanas" -> 3
+        "distribucion", "entrega", "entregado" -> 4
+        else -> 0
+    }
+
+    val delivered =
+        estado == "entregado" ||
+                pasoVisual == "entregado"
+
+    var showAddProductDialog by remember(order.id, estado) {
+        mutableStateOf(false)
+    }
+
+    InternationalCurrentStatusCard(
+        order = order,
+        title = estadoNombre,
+        description = descripcion,
+        pasoVisual = pasoVisual,
+        delivered = delivered
+    )
+
+    if (puedeAgregarProductoInternacional(estado)) {
+        Spacer(modifier = Modifier.height(12.dp))
+
+        AddInternationalProductCard(
+            onClick = {
+                showAddProductDialog = true
+            }
+        )
+    }
+
+    if (showAddProductDialog) {
+        AddInternationalProductDialog(
+            order = order,
+            onDismiss = {
+                showAddProductDialog = false
+            },
+            onSubmitted = {
+                showAddProductDialog = false
+                onProductAdded()
+            }
+        )
+    }
+
+    Spacer(modifier = Modifier.height(12.dp))
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = colors.card
+        ),
+        border = BorderStroke(1.dp, colors.line),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 1.dp
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(
+                horizontal = 14.dp,
+                vertical = 16.dp
+            )
+        ) {
+            Text(
+                text = "PROGRESO DEL ENVÍO",
+                color = colors.muted,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = InterFont,
+                letterSpacing = 0.5.sp
+            )
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top
+            ) {
+                stages.forEachIndexed { index, stage ->
+                    InternationalStageItem(
+                        stage = stage,
+                        completed = index < currentIndex || delivered,
+                        current = index == currentIndex && !delivered,
+                        delivered = delivered &&
+                                index == stages.lastIndex,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    if (index != stages.lastIndex) {
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 18.dp)
+                                .width(12.dp)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(50.dp))
+                                .background(
+                                    if (index < currentIndex || delivered) {
+                                        PcBlue
+                                    } else {
+                                        colors.line
+                                    }
+                                )
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            val progress =
+                if (delivered) 1f
+                else (currentIndex + 1) /
+                        stages.size.toFloat()
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(7.dp)
+                    .clip(RoundedCornerShape(50.dp))
+                    .background(colors.line)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(50.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(PcRed, PcBlue)
+                            )
+                        )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(9.dp))
+
+            Text(
+                text = if (delivered) {
+                    "Tu pedido fue entregado correctamente."
+                } else {
+                    "Etapa actual: ${stages[currentIndex].label}"
+                },
+                color = if (delivered) PcGreen else colors.muted,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = InterFont
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(12.dp))
+
+    InternationalHistoryCard(
+        currentState = estado
+    )
+}
+
+@Composable
+private fun AddInternationalProductCard(
+    onClick: () -> Unit
+) {
+    val colors = misPedidosColors()
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = colors.card
+        ),
+        border = BorderStroke(
+            1.dp,
+            Color(0xFFF59E0B).copy(alpha = 0.55f)
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 1.dp
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            Color(0xFFF59E0B).copy(alpha = 0.14f),
+                            colors.card
+                        )
+                    )
+                )
+                .padding(16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFFF59E0B)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.AddShoppingCart,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "¿Tienes otra compra?",
+                        color = colors.ink,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = InterFont
+                    )
+
+                    Spacer(modifier = Modifier.height(3.dp))
+
+                    Text(
+                        text = "Puedes agregar más productos mientras el envío siga abierto.",
+                        color = colors.muted,
+                        fontSize = 12.5.sp,
+                        lineHeight = 17.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = InterFont
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Button(
+                onClick = onClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                shape = RoundedCornerShape(15.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFF59E0B),
+                    contentColor = Color.White
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Add,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Text(
+                    text = "Agregar otro producto",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = InterFont
+                )
+            }
+
+            Spacer(modifier = Modifier.height(9.dp))
+
+            Text(
+                text = "Disponible hasta que el pedido cambie a Despachado.",
+                color = colors.muted,
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = InterFont,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun AddInternationalProductDialog(
+    order: Order,
+    onDismiss: () -> Unit,
+    onSubmitted: () -> Unit
+) {
+    val colors = misPedidosColors()
+    val context = LocalContext.current
+    val sessionManager = remember {
+        SessionManager(context)
+    }
+    val scope = rememberCoroutineScope()
+
+    var webCompra by remember(order.id) {
+        mutableStateOf("")
+    }
+
+    var nombreProducto by remember(order.id) {
+        mutableStateOf("")
+    }
+
+    var tracking by remember(order.id) {
+        mutableStateOf("")
+    }
+
+    var precio by remember(order.id) {
+        mutableStateOf("")
+    }
+
+    var pesoEstimado by remember(order.id) {
+        mutableStateOf("")
+    }
+
+    var comentario by remember(order.id) {
+        mutableStateOf("")
+    }
+
+    var facturaUri by remember(order.id) {
+        mutableStateOf<Uri?>(null)
+    }
+
+    var facturaNombre by remember(order.id) {
+        mutableStateOf("")
+    }
+
+    var isSaving by remember {
+        mutableStateOf(false)
+    }
+
+    val facturaLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            facturaUri = uri
+            facturaNombre = obtenerNombreArchivo(
+                context = context,
+                uri = uri
+            )
+
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: Exception) {
+                // Algunos proveedores no permiten permisos persistentes.
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = {
+            if (!isSaving) {
+                onDismiss()
+            }
+        },
+        containerColor = colors.card,
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFFF59E0B)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.AddShoppingCart,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column {
+                    Text(
+                        text = "Agregar producto",
+                        color = colors.ink,
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = InterFont
+                    )
+
+                    Text(
+                        text = "Pedido internacional #${order.id ?: 0}",
+                        color = colors.muted,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = InterFont
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 540.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(11.dp)
+            ) {
+                Text(
+                    text = "La nueva compra será guardada y asociada directamente con este pedido.",
+                    color = colors.textSoft,
+                    fontSize = 12.5.sp,
+                    lineHeight = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                    fontFamily = InterFont
+                )
+
+                OutlinedTextField(
+                    value = webCompra,
+                    onValueChange = { webCompra = it },
+                    enabled = !isSaving,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Tienda o página web") },
+                    placeholder = {
+                        Text("Amazon, Temu, AliExpress...")
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp)
+                )
+
+                OutlinedTextField(
+                    value = nombreProducto,
+                    onValueChange = { nombreProducto = it },
+                    enabled = !isSaving,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Producto") },
+                    placeholder = {
+                        Text("Ejemplo: zapatillas, celular...")
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp)
+                )
+
+                OutlinedTextField(
+                    value = tracking,
+                    onValueChange = { tracking = it },
+                    enabled = !isSaving,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Tracking") },
+                    placeholder = {
+                        Text("Número de seguimiento")
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = precio,
+                        onValueChange = { precio = it },
+                        enabled = !isSaving,
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Precio USD") },
+                        placeholder = { Text("0.00") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = pesoEstimado,
+                        onValueChange = { pesoEstimado = it },
+                        enabled = !isSaving,
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Peso kg") },
+                        placeholder = { Text("0.00") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                }
+
+                Column {
+                    Text(
+                        text = "FACTURA",
+                        color = colors.muted,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = InterFont,
+                        letterSpacing = 0.5.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(7.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            facturaLauncher.launch(
+                                arrayOf("application/pdf")
+                            )
+                        },
+                        enabled = !isSaving,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(
+                            1.dp,
+                            if (facturaUri != null) {
+                                PcGreen
+                            } else {
+                                colors.line
+                            }
+                        ),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (facturaUri != null) {
+                                PcGreen
+                            } else {
+                                PcBlue
+                            }
+                        )
+                    ) {
+                        Icon(
+                            imageVector = if (facturaUri != null) {
+                                Icons.Outlined.Description
+                            } else {
+                                Icons.Outlined.UploadFile
+                            },
+                            contentDescription = null,
+                            modifier = Modifier.size(21.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(9.dp))
+
+                        Text(
+                            text = if (facturaNombre.isNotBlank()) {
+                                facturaNombre
+                            } else {
+                                "Seleccionar factura"
+                            },
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = InterFont,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(5.dp))
+                    Text(
+                        text = "Formato permitido: PDF. Máximo 10 MB.",
+                        color = colors.muted,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = InterFont
+                    )
+                }
+
+                OutlinedTextField(
+                    value = comentario,
+                    onValueChange = { comentario = it },
+                    enabled = !isSaving,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 90.dp),
+                    label = { Text("Comentario opcional") },
+                    placeholder = {
+                        Text("Color, talla, cantidad u otra indicación")
+                    },
+                    minLines = 3,
+                    shape = RoundedCornerShape(14.dp)
+                )
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(colors.warningBg)
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = "Solo puedes agregar productos mientras el pedido esté abierto y antes de ser despachado.",
+                        color = colors.warningText,
+                        fontSize = 11.5.sp,
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = InterFont
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = !isSaving,
+                onClick = {
+                    val envioId = order.id ?: 0
+                    val userEmail = sessionManager.getUserEmail()
+
+                    if (envioId <= 0) {
+                        Toast.makeText(
+                            context,
+                            "Pedido inválido",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@Button
+                    }
+
+                    if (userEmail.isNullOrBlank()) {
+                        Toast.makeText(
+                            context,
+                            "No se encontró la sesión",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@Button
+                    }
+
+                    if (webCompra.isBlank()) {
+                        Toast.makeText(
+                            context,
+                            "Ingresa la tienda o página web",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@Button
+                    }
+
+                    if (nombreProducto.isBlank()) {
+                        Toast.makeText(
+                            context,
+                            "Ingresa el nombre del producto",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@Button
+                    }
+
+                    if (tracking.isBlank()) {
+                        Toast.makeText(
+                            context,
+                            "Ingresa el tracking",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@Button
+                    }
+
+                    if (facturaUri == null) {
+                        Toast.makeText(
+                            context,
+                            "Selecciona la factura",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@Button
+                    }
+
+                    val precioNormalizado =
+                        precio.trim().replace(",", ".")
+
+                    val pesoNormalizado =
+                        pesoEstimado.trim().replace(",", ".")
+
+                    if (
+                        precioNormalizado.isNotBlank() &&
+                        precioNormalizado.toDoubleOrNull() == null
+                    ) {
+                        Toast.makeText(
+                            context,
+                            "El precio no es válido",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@Button
+                    }
+
+                    if (
+                        pesoNormalizado.isNotBlank() &&
+                        pesoNormalizado.toDoubleOrNull() == null
+                    ) {
+                        Toast.makeText(
+                            context,
+                            "El peso no es válido",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@Button
+                    }
+
+                    scope.launch {
+                        try {
+                            isSaving = true
+
+                            val facturaPart = withContext(
+                                Dispatchers.IO
+                            ) {
+                                crearFacturaMultipart(
+                                    context = context,
+                                    uri = facturaUri!!,
+                                    nombreOriginal = facturaNombre
+                                )
+                            }
+
+                            val textPlain =
+                                "text/plain".toMediaTypeOrNull()
+
+                            val response =
+                                RetrofitClient.instance
+                                    .addInternationalProduct(
+                                        envioId = envioId
+                                            .toString()
+                                            .toRequestBody(textPlain),
+                                        userEmail = userEmail
+                                            .toRequestBody(textPlain),
+                                        webCompra = webCompra
+                                            .trim()
+                                            .toRequestBody(textPlain),
+                                        producto = nombreProducto
+                                            .trim()
+                                            .toRequestBody(textPlain),
+                                        tracking = tracking
+                                            .trim()
+                                            .toRequestBody(textPlain),
+                                        precioCompra = precioNormalizado
+                                            .toRequestBody(textPlain),
+                                        pesoEstimado = pesoNormalizado
+                                            .toRequestBody(textPlain),
+                                        comentario = comentario
+                                            .trim()
+                                            .toRequestBody(textPlain),
+                                        facturaPdf = facturaPart
+                                    )
+
+                            isSaving = false
+
+                            if (response.success) {
+                                Toast.makeText(
+                                    context,
+                                    response.message
+                                        ?: "Producto agregado correctamente",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+
+                                onSubmitted()
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    response.message
+                                        ?: "No se pudo agregar el producto",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        } catch (e: Exception) {
+                            isSaving = false
+
+                            Toast.makeText(
+                                context,
+                                "Error al agregar: ${e.message}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(13.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFF59E0B),
+                    contentColor = Color.White,
+                    disabledContainerColor =
+                        Color(0xFFF59E0B).copy(alpha = 0.55f),
+                    disabledContentColor = Color.White
+                )
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Outlined.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(7.dp))
+
+                    Text(
+                        text = "Agregar producto",
+                        fontWeight = FontWeight.Black,
+                        fontFamily = InterFont
+                    )
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                enabled = !isSaving,
+                onClick = onDismiss
+            ) {
+                Text(
+                    text = "Cancelar",
+                    color = colors.muted,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = InterFont
+                )
+            }
+        }
+    )
+}
+
+private fun obtenerNombreArchivo(
+    context: android.content.Context,
+    uri: Uri
+): String {
+    var nombre = "factura"
+
+    context.contentResolver.query(
+        uri,
+        arrayOf(OpenableColumns.DISPLAY_NAME),
+        null,
+        null,
+        null
+    )?.use { cursor ->
+        val index =
+            cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+
+        if (index >= 0 && cursor.moveToFirst()) {
+            nombre = cursor.getString(index)
+        }
+    }
+
+    return nombre
+}
+
+private fun crearFacturaMultipart(
+    context: android.content.Context,
+    uri: Uri,
+    nombreOriginal: String
+): MultipartBody.Part {
+    val mimeType =
+        context.contentResolver.getType(uri)
+            ?: "application/octet-stream"
+
+    val extension = when (mimeType) {
+        "application/pdf" -> ".pdf"
+        "image/jpeg" -> ".jpg"
+        "image/png" -> ".png"
+        "image/webp" -> ".webp"
+        else -> ""
+    }
+
+    val nombreSeguro = nombreOriginal
+        .ifBlank { "factura$extension" }
+        .replace(
+            Regex("[^A-Za-z0-9._-]"),
+            "_"
+        )
+
+    val archivoTemporal = File(
+        context.cacheDir,
+        "${System.currentTimeMillis()}_$nombreSeguro"
+    )
+
+    context.contentResolver
+        .openInputStream(uri)
+        ?.use { input ->
+            archivoTemporal.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        }
+        ?: throw IllegalStateException(
+            "No se pudo leer la factura seleccionada"
+        )
+
+    val requestBody = archivoTemporal.asRequestBody(
+        mimeType.toMediaTypeOrNull()
+    )
+
+    return MultipartBody.Part.createFormData(
+        name = "factura_pdf",
+        filename = nombreSeguro,
+        body = requestBody
+    )
+}
+
+@Composable
+private fun InternationalCurrentStatusCard(
+    order: Order,
+    title: String,
+    description: String,
+    pasoVisual: String,
+    delivered: Boolean
+) {
+    val colors = misPedidosColors()
+    val estado = normalizarEstado(order.estado)
+
+    val accent = colorPasoVisual(
+        pasoVisual = pasoVisual,
+        estado = estado
+    )
+
+    val icon = iconoPasoVisual(
+        pasoVisual = pasoVisual,
+        estado = estado
+    )
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = colors.card
+        ),
+        border = BorderStroke(
+            1.dp,
+            accent.copy(alpha = 0.36f)
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 2.dp
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            accent.copy(alpha = 0.17f),
+                            colors.card
+                        )
+                    )
+                )
+                .padding(18.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = accent.copy(alpha = 0.08f),
+                modifier = Modifier
+                    .size(135.dp)
+                    .align(Alignment.TopEnd)
+                    .offset(x = 30.dp, y = (-34).dp)
+            )
+
+            Column(
+                modifier = Modifier.fillMaxWidth(0.86f)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(15.dp))
+                            .background(accent),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(25.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column {
+                        Text(
+                            text = "ESTADO ACTUAL",
+                            color = colors.muted,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = InterFont,
+                            letterSpacing = 0.6.sp
+                        )
+
+                        Text(
+                            text = title,
+                            color = colors.ink,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = InterFont
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = description,
+                    color = colors.textSoft,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    fontFamily = InterFont,
+                    lineHeight = 19.sp
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Schedule,
+                        contentDescription = null,
+                        tint = accent,
+                        modifier = Modifier.size(16.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(7.dp))
+
+                    Text(
+                        text = "Actualizado: ${
+                            formatFecha(
+                                order.updated_at
+                                    ?: order.created_at
+                            )
+                        }",
+                        color = colors.muted,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = InterFont
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InternationalStageItem(
+    stage: InternationalVisualStage,
+    completed: Boolean,
+    current: Boolean,
+    delivered: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val colors = misPedidosColors()
+
+    val background = when {
+        delivered -> PcGreen
+        current -> PcRed
+        completed -> PcBlue
+        else -> colors.bg
+    }
+
+    val borderColor = when {
+        delivered -> PcGreen
+        current -> PcRed
+        completed -> PcBlue
+        else -> colors.line
+    }
+
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(background)
+                .border(
+                    2.dp,
+                    borderColor,
+                    CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (completed || delivered) {
+                    Icons.Outlined.Check
+                } else {
+                    stage.icon
+                },
+                contentDescription = null,
+                tint = if (completed || current || delivered) {
+                    Color.White
+                } else {
+                    colors.placeholder
+                },
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(7.dp))
+
+        Text(
+            text = stage.label.uppercase(),
+            color = when {
+                delivered -> PcGreen
+                current -> PcRed
+                completed -> PcBlue
+                else -> colors.placeholder
+            },
+            fontSize = 8.5.sp,
+            fontWeight = FontWeight.Black,
+            fontFamily = InterFont,
+            textAlign = TextAlign.Center,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun InternationalHistoryCard(
+    currentState: String
+) {
+    val colors = misPedidosColors()
+    var expanded by remember(currentState) {
+        mutableStateOf(false)
+    }
+
+    val history = internationalHistorySteps()
+    val currentIndex = history.indexOfFirst {
+        currentState in it.codes
+    }.let {
+        if (it < 0) 0 else it
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = colors.card
+        ),
+        border = BorderStroke(1.dp, colors.line),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 1.dp
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable {
+                        expanded = !expanded
+                    }
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(colors.blueTint),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Schedule,
+                        contentDescription = null,
+                        tint = PcBlue,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "HISTORIAL DEL PEDIDO",
+                        color = colors.muted,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = InterFont,
+                        letterSpacing = 0.4.sp
+                    )
+
+                    Text(
+                        text = if (expanded) {
+                            "Ocultar estados"
+                        } else {
+                            "Ver detalle completo"
+                        },
+                        color = colors.ink,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = InterFont
+                    )
+                }
+
+                Text(
+                    text = if (expanded) "⌃" else "⌄",
+                    color = PcBlue,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Black
+                )
+            }
+
+            if (expanded) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                history.forEachIndexed { index, step ->
+                    val completed =
+                        index < currentIndex ||
+                                currentState == "entregado"
+
+                    val current =
+                        index == currentIndex &&
+                                currentState != "entregado"
+
+                    val isLast =
+                        index == history.lastIndex
+
+                    InternationalHistoryRow(
+                        label = step.label,
+                        completed = completed,
+                        current = current,
+                        delivered = currentState == "entregado" &&
+                                isLast,
+                        showLine = !isLast
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InternationalHistoryRow(
+    label: String,
+    completed: Boolean,
+    current: Boolean,
+    delivered: Boolean,
+    showLine: Boolean
+) {
+    val colors = misPedidosColors()
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(
+                        when {
+                            delivered -> PcGreen
+                            current -> PcRed
+                            completed -> PcBlue
+                            else -> colors.bg
+                        }
+                    )
+                    .border(
+                        2.dp,
+                        when {
+                            delivered -> PcGreen
+                            current -> PcRed
+                            completed -> PcBlue
+                            else -> colors.line
+                        },
+                        CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                when {
+                    completed || delivered -> {
+                        Icon(
+                            imageVector = Icons.Outlined.Check,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+
+                    current -> {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                        )
+                    }
+                }
+            }
+
+            if (showLine) {
+                Box(
+                    modifier = Modifier
+                        .width(2.dp)
+                        .height(30.dp)
+                        .background(
+                            if (completed) {
+                                PcBlue.copy(alpha = 0.55f)
+                            } else {
+                                colors.line
+                            }
+                        )
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Text(
+            text = label,
+            color = when {
+                delivered -> PcGreen
+                current -> PcRed
+                completed -> colors.ink
+                else -> colors.placeholder
+            },
+            fontSize = 13.5.sp,
+            fontWeight = when {
+                current || delivered -> FontWeight.ExtraBold
+                completed -> FontWeight.Bold
+                else -> FontWeight.Medium
+            },
+            fontFamily = InterFont,
+            modifier = Modifier.padding(top = 1.dp)
+        )
+    }
+}
+
+private fun internationalHistorySteps():
+        List<InternationalHistoryStep> {
+    return listOf(
+        InternationalHistoryStep(
+            codes = setOf(
+                "pendiente_revision",
+                "pedido_registrado"
+            ),
+            label = "Pedido internacional registrado"
+        ),
+        InternationalHistoryStep(
+            codes = setOf("en_revision"),
+            label = "En revisión"
+        ),
+        InternationalHistoryStep(
+            codes = setOf("esperando_almacen"),
+            label = "Esperando llegada al almacén"
+        ),
+        InternationalHistoryStep(
+            codes = setOf(
+                "recibido_almacen",
+                "recibido_en_almacen",
+                "en_almacen"
+            ),
+            label = "Recibido en almacén"
+        ),
+        InternationalHistoryStep(
+            codes = setOf(
+                "consolidacion",
+                "en_consolidacion"
+            ),
+            label = "En consolidación"
+        ),
+        InternationalHistoryStep(
+            codes = setOf("despachado"),
+            label = "Despachado desde origen"
+        ),
+        InternationalHistoryStep(
+            codes = setOf("transito_internacional"),
+            label = "En tránsito internacional"
+        ),
+        InternationalHistoryStep(
+            codes = setOf(
+                "llegado_peru",
+                "llego_a_peru"
+            ),
+            label = "Llegó al Perú"
+        ),
+        InternationalHistoryStep(
+            codes = setOf("desaduanaje"),
+            label = "En proceso de desaduanaje"
+        ),
+        InternationalHistoryStep(
+            codes = setOf(
+                "esperando_pago_impuestos",
+                "pago_de_impuestos"
+            ),
+            label = "Pago de impuestos, si corresponde"
+        ),
+        InternationalHistoryStep(
+            codes = setOf(
+                "liberado_aduanas",
+                "liberado_por_aduanas"
+            ),
+            label = "Liberado por aduanas"
+        ),
+        InternationalHistoryStep(
+            codes = setOf(
+                "distribucion",
+                "en_distribucion"
+            ),
+            label = "En distribución"
+        ),
+        InternationalHistoryStep(
+            codes = setOf(
+                "ruta_entrega",
+                "en_ruta"
+            ),
+            label = "En ruta de entrega"
+        ),
+        InternationalHistoryStep(
+            codes = setOf("entregado"),
+            label = "Entregado"
+        )
+    )
+}
+
+private fun puedeAgregarProductoInternacional(
+    estado: String
+): Boolean {
+    return estado in setOf(
+        "esperando_almacen",
+        "recibido_almacen",
+        "recibido_en_almacen",
+        "en_almacen",
+        "consolidacion",
+        "en_consolidacion"
+    )
+}
+
+private fun resolverPasoVisualInternacional(
+    pasoVisualApi: String?,
+    estado: String
+): String {
+    val api = normalizarEstado(pasoVisualApi)
+
+    if (api.isNotBlank()) {
+        return when (api) {
+            "aduanas" -> "desaduanaje"
+            "entrega" -> "distribucion"
+            else -> api
+        }
+    }
+
+    return when (estado) {
+        "pendiente_revision",
+        "pedido_registrado",
+        "en_revision" -> "registro"
+
+        "esperando_almacen",
+        "recibido_almacen",
+        "recibido_en_almacen",
+        "en_almacen",
+        "consolidacion",
+        "en_consolidacion" -> "almacen"
+
+        "despachado",
+        "transito_internacional" -> "despacho"
+
+        "llegado_peru",
+        "llego_a_peru",
+        "desaduanaje",
+        "esperando_pago_impuestos",
+        "pago_de_impuestos",
+        "liberado_aduanas",
+        "liberado_por_aduanas" -> "desaduanaje"
+
+        "distribucion",
+        "en_distribucion",
+        "ruta_entrega",
+        "en_ruta" -> "distribucion"
+
+        "entregado" -> "entregado"
+
+        else -> "registro"
+    }
+}
+
+private fun colorPasoVisual(
+    pasoVisual: String,
+    estado: String
+): Color {
+    return when {
+        estado == "entregado" ||
+                pasoVisual == "entregado" -> PcGreen
+
+        estado == "cancelado" ||
+                estado == "cancelado_cliente" -> PcRed
+
+        pasoVisual == "registro" -> PcBlue
+        pasoVisual == "almacen" -> Color(0xFFF59E0B)
+        pasoVisual == "despacho" -> PcBlue
+        pasoVisual == "desaduanaje" ||
+                pasoVisual == "aduanas" -> Color(0xFF7C3AED)
+
+        else -> PcRed
+    }
+}
+
+private fun iconoPasoVisual(
+    pasoVisual: String,
+    estado: String
+): ImageVector {
+    return when {
+        estado == "entregado" ||
+                pasoVisual == "entregado" ->
+            Icons.Outlined.CheckCircle
+
+        pasoVisual == "registro" ->
+            Icons.Outlined.Schedule
+
+        pasoVisual == "almacen" ->
+            Icons.Outlined.Inventory2
+
+        pasoVisual == "despacho" ->
+            Icons.Outlined.Language
+
+        pasoVisual == "desaduanaje" ||
+                pasoVisual == "aduanas" ->
+            Icons.Outlined.QrCode2
+
+        else ->
+            Icons.Outlined.Route
+    }
+}
+
+private fun descripcionEstadoInternacional(
+    estado: String
+): String {
+    return when (estado) {
+        "pendiente_revision" ->
+            "Registramos tu solicitud internacional y será revisada por nuestro equipo."
+
+        "en_revision" ->
+            "Estamos validando los datos, productos y documentos de tu pedido."
+
+        "esperando_almacen" ->
+            "Estamos esperando que tu compra llegue a nuestro almacén de origen."
+
+        "recibido_almacen",
+        "recibido_en_almacen",
+        "en_almacen" ->
+            "Tu compra ya fue recibida y registrada en nuestro almacén."
+
+        "consolidacion",
+        "en_consolidacion" ->
+            "Estamos agrupando tus compras antes del despacho hacia Perú."
+
+        "despachado" ->
+            "Tu carga salió de nuestro almacén y fue preparada para el transporte internacional."
+
+        "transito_internacional" ->
+            "Tu pedido está viajando hacia Perú."
+
+        "llegado_peru",
+        "llego_a_peru" ->
+            "Tu pedido llegó al Perú y será procesado por aduanas."
+
+        "desaduanaje" ->
+            "Estamos realizando el proceso de revisión y liberación aduanera."
+
+        "esperando_pago_impuestos",
+        "pago_de_impuestos" ->
+            "El pedido requiere el pago de impuestos para continuar con su liberación."
+
+        "liberado_aduanas",
+        "liberado_por_aduanas" ->
+            "Tu pedido fue liberado y será trasladado a distribución."
+
+        "distribucion",
+        "en_distribucion" ->
+            "Estamos preparando tu pedido para la entrega local."
+
+        "ruta_entrega",
+        "en_ruta" ->
+            "Tu pedido está en ruta hacia la dirección de entrega."
+
+        "entregado" ->
+            "Tu pedido internacional fue entregado correctamente."
+
+        "cancelado",
+        "cancelado_cliente" ->
+            "El pedido internacional fue cancelado."
+
+        else ->
+            "Tu pedido continúa avanzando dentro del proceso internacional."
+    }
+}
+
+private fun descripcionEstadoNacional(
+    estado: String
+): String {
+    return when (estado) {
+        "pendiente_pago",
+        "esperando_repartidor" ->
+            "Estamos buscando un repartidor para tu pedido."
+
+        "asignado" ->
+            "Tu pedido ya tiene un repartidor asignado."
+
+        "recogiendo" ->
+            "El repartidor se dirige al punto de recojo."
+
+        "recogido" ->
+            "El paquete fue recogido correctamente."
+
+        "en_camino",
+        "en_transito" ->
+            "Tu pedido está en camino hacia el destino."
+
+        "entregado" ->
+            "Tu pedido fue entregado correctamente."
+
+        "cancelado",
+        "cancelado_cliente" ->
+            "Este pedido fue cancelado."
+
+        else ->
+            "Tu pedido está siendo procesado."
     }
 }
 
@@ -1852,6 +3971,109 @@ private fun callPhone(
         context.startActivity(
             Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
         )
+    }
+}
+
+private fun normalizarEstadoPago(estadoPago: String?): String {
+    return estadoPago
+        ?.trim()
+        ?.lowercase()
+        ?.replace(" ", "_")
+        ?.replace("-", "_")
+        .orEmpty()
+        .ifBlank { "pendiente" }
+}
+
+private fun solicitarPagoYabrirWhatsApp(
+    context: android.content.Context,
+    order: Order,
+    userEmail: String,
+    onUpdated: () -> Unit
+) {
+    val envioId = order.id ?: 0
+
+    if (envioId <= 0 || userEmail.isBlank()) {
+        Toast.makeText(
+            context,
+            "No se pudo identificar el pedido o la sesión",
+            Toast.LENGTH_LONG
+        ).show()
+        return
+    }
+
+    RetrofitClient.instance
+        .solicitarPagoInternacional(
+            envioId = envioId,
+            userEmail = userEmail
+        )
+        .enqueue(object : Callback<BasicResponse> {
+            override fun onResponse(
+                call: Call<BasicResponse>,
+                response: Response<BasicResponse>
+            ) {
+                val result = response.body()
+
+                if (response.isSuccessful && result?.success == true) {
+                    onUpdated()
+                    abrirWhatsAppPago(
+                        context = context,
+                        orderId = envioId,
+                        total = order.total?.toString() ?: "0.00"
+                    )
+                } else {
+                    Toast.makeText(
+                        context,
+                        result?.message ?: "No se pudo iniciar el pago",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+
+            override fun onFailure(
+                call: Call<BasicResponse>,
+                t: Throwable
+            ) {
+                Toast.makeText(
+                    context,
+                    "Error de conexión: ${t.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        })
+}
+
+private fun abrirWhatsAppPago(
+    context: android.content.Context,
+    orderId: Int,
+    total: String
+) {
+    val telefono = "51967929967"
+    val mensaje = Uri.encode(
+        """
+        Hola Perucho Courier 👋
+
+        Deseo realizar el pago de mi pedido internacional.
+
+        Pedido: #$orderId
+        Total: $$total
+
+        Por favor, indíquenme los datos para realizar el pago.
+        """.trimIndent()
+    )
+
+    try {
+        context.startActivity(
+            Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://wa.me/$telefono?text=$mensaje")
+            )
+        )
+    } catch (_: Exception) {
+        Toast.makeText(
+            context,
+            "No se pudo abrir WhatsApp",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 }
 

@@ -4,11 +4,14 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -20,6 +23,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -91,14 +96,8 @@ private val IntlDark: Color
 private val IntlInfoBg: Color
     @Composable get() = if (IsDarkMode) Color(0xFF172554) else Color(0xFFF2F6FF)
 
-private val IntlSuccessBg: Color
-    @Composable get() = if (IsDarkMode) Color(0xFF14532D) else Color(0xFFF0FFF4)
-
 private val IntlSuccessText: Color
     @Composable get() = if (IsDarkMode) Color(0xFFDCFCE7) else Color(0xFF065F46)
-
-private val IntlStatBg: Color
-    @Composable get() = if (IsDarkMode) Color(0xFF1F2937) else Color(0xFFF9FAFB)
 
 fun String.toPlainRequestBody(): RequestBody {
     return this.toRequestBody("text/plain".toMediaTypeOrNull())
@@ -109,26 +108,24 @@ fun String.toPlainRequestBody(): RequestBody {
 fun PedidoInternacionalScreen(navController: NavController) {
     val context = LocalContext.current
     val sessionManager = SessionManager(context)
-
     val precioPorKg = 8.5
 
-    var webCompra by remember { mutableStateOf("") }
-    var productos by remember { mutableStateOf("") }
-    var precioCompra by remember { mutableStateOf("") }
-    var tracking by remember { mutableStateOf("") }
-    var fechaSeleccionada by remember { mutableStateOf("") }
-    var pesoEstimado by remember { mutableStateOf("") }
-    var metodoPago by remember { mutableStateOf("") }
-    var errorMessage by remember { mutableStateOf("") }
+    var pasoActual by rememberSaveable { mutableIntStateOf(1) }
+
+    var webCompra by rememberSaveable { mutableStateOf("") }
+    var productos by rememberSaveable { mutableStateOf("") }
+    var precioCompra by rememberSaveable { mutableStateOf("") }
+    var tracking by rememberSaveable { mutableStateOf("") }
+    var fechaSeleccionada by rememberSaveable { mutableStateOf("") }
+    var pesoEstimado by rememberSaveable { mutableStateOf("") }
+    var metodoPago by rememberSaveable { mutableStateOf("") }
+    var errorMessage by rememberSaveable { mutableStateOf("") }
 
     var showDatePicker by remember { mutableStateOf(false) }
     val datePickerState = rememberDatePickerState()
 
-    var expandedPago by remember { mutableStateOf(false) }
-    val metodosPago = listOf("Yape", "Plin", "BCP", "Interbank", "Efectivo")
-
     var pdfUri by remember { mutableStateOf<Uri?>(null) }
-    var pdfNombre by remember { mutableStateOf("Ningún archivo seleccionado") }
+    var pdfNombre by rememberSaveable { mutableStateOf("Ningún archivo seleccionado") }
     var isSubmitting by remember { mutableStateOf(false) }
     var showAduanaDialog by remember { mutableStateOf(false) }
     var showTrackingHelp by remember { mutableStateOf(false) }
@@ -140,7 +137,6 @@ fun PedidoInternacionalScreen(navController: NavController) {
     ) { uri: Uri? ->
         if (uri != null) {
             pdfUri = uri
-
             try {
                 context.contentResolver.takePersistableUriPermission(
                     uri,
@@ -159,6 +155,123 @@ fun PedidoInternacionalScreen(navController: NavController) {
         }
     }
 
+    fun validarPaso1(): Boolean {
+        errorMessage = when {
+            webCompra.isBlank() || productos.isBlank() || precioCompra.isBlank() ->
+                "Completa la web, el producto y el precio."
+
+            !esWebCompraValida(webCompra) ->
+                "La web de compra debe terminar en .com. Ejemplo: amazon.com"
+
+            productos.trim().length < 3 ->
+                "Ingresa un nombre de producto válido."
+
+            !esDecimalValido(precioCompra) ||
+                    precioCompra.toDoubleOrNull() == null ||
+                    precioCompra.toDouble() <= 0.0 ->
+                "Ingresa un precio válido mayor a 0. Ejemplo: 25.99"
+
+            else -> ""
+        }
+        return errorMessage.isBlank()
+    }
+
+    fun validarPaso2(): Boolean {
+        errorMessage = when {
+            tracking.isBlank() || fechaSeleccionada.isBlank() || pesoEstimado.isBlank() ->
+                "Completa el tracking, la fecha y el peso estimado."
+
+            tracking.length < 6 ->
+                "Ingresa un número de tracking válido."
+
+            !esDecimalValido(pesoEstimado) ||
+                    pesoEstimado.toDoubleOrNull() == null ||
+                    pesoEstimado.toDouble() <= 0.0 ->
+                "Ingresa un peso válido mayor a 0. Ejemplo: 1.50"
+
+            else -> ""
+        }
+        return errorMessage.isBlank()
+    }
+
+    fun enviarPedido() {
+        errorMessage = when {
+            metodoPago.isBlank() -> "Selecciona un método de pago."
+            pdfUri == null -> "Adjunta la factura PDF."
+            else -> ""
+        }
+        if (errorMessage.isNotBlank()) return
+
+        val email = sessionManager.getUserEmail()
+        if (email.isNullOrEmpty()) {
+            errorMessage = "Sesión inválida."
+            return
+        }
+
+        isSubmitting = true
+
+        try {
+            val input = context.contentResolver.openInputStream(pdfUri!!)
+            val file = File.createTempFile("factura_", ".pdf", context.cacheDir)
+            val output = FileOutputStream(file)
+
+            input?.copyTo(output)
+            input?.close()
+            output.close()
+
+            val requestFile = file.asRequestBody("application/pdf".toMediaTypeOrNull())
+            val pdfPart = MultipartBody.Part.createFormData(
+                "factura_pdf",
+                file.name,
+                requestFile
+            )
+
+            // Se conserva exactamente la misma llamada a Retrofit y los mismos campos del PHP.
+            RetrofitClient.instance.createInternationalOrder(
+                email.toPlainRequestBody(),
+                "internacional".toPlainRequestBody(),
+                normalizarWebCompra(webCompra).toPlainRequestBody(),
+                productos.trim().toPlainRequestBody(),
+                precioCompra.trim().toPlainRequestBody(),
+                tracking.trim().toPlainRequestBody(),
+                fechaSeleccionada.toPlainRequestBody(),
+                pesoEstimado.trim().toPlainRequestBody(),
+                metodoPago.toPlainRequestBody(),
+                "%.2f".format(Locale.US, totalEstimado).toPlainRequestBody(),
+                pdfPart
+            ).enqueue(object : Callback<BasicResponse> {
+                override fun onResponse(
+                    call: Call<BasicResponse>,
+                    response: Response<BasicResponse>
+                ) {
+                    isSubmitting = false
+                    if (response.isSuccessful) {
+                        val result = response.body()
+                        if (result?.success == true) {
+                            navController.navigate("mis_pedidos") {
+                                popUpTo("client_lobby") { inclusive = false }
+                                launchSingleTop = true
+                            }
+                        } else {
+                            errorMessage = result?.message ?: "Respuesta vacía del servidor."
+                        }
+                    } else {
+                        errorMessage =
+                            "HTTP ${response.code()}: ${response.errorBody()?.string()}"
+                    }
+                }
+
+                override fun onFailure(call: Call<BasicResponse>, t: Throwable) {
+                    isSubmitting = false
+                    errorMessage = "Error: ${t.message}"
+                }
+            })
+        } catch (e: Exception) {
+            isSubmitting = false
+            errorMessage = "Error al procesar el PDF."
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -166,301 +279,111 @@ fun PedidoInternacionalScreen(navController: NavController) {
             .navigationBarsPadding()
     ) {
         IntlTopBar(navController)
+        IntlStepIndicator(currentStep = pasoActual)
 
-        InfoBanner()
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            IntlSectionCard(
-                title = "Tienda / Producto",
-                icon = Icons.Outlined.Storefront,
-                iconBg = IntlBlueLight,
-                iconTint = IntlBlue
-            ) {
-                IntlInput(
-                    label = "WEB DE COMPRA",
-                    value = webCompra,
-                    placeholder = "ej: amazon.com",
-                    icon = Icons.Outlined.Language,
-                    keyboardType = KeyboardType.Uri,
-                    onValueChange = {
-                        webCompra = it
-                            .lowercase()
-                            .replace(" ", "")
+        AnimatedContent(
+            targetState = pasoActual,
+            modifier = Modifier.weight(1f),
+            transitionSpec = {
+                if (targetState > initialState) {
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Left,
+                        animationSpec = tween(280)
+                    ) togetherWith slideOutOfContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Left,
+                        animationSpec = tween(280)
+                    )
+                } else {
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        animationSpec = tween(280)
+                    ) togetherWith slideOutOfContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        animationSpec = tween(280)
+                    )
+                }
+            },
+            label = "pedido_internacional_steps"
+        ) { step ->
+            when (step) {
+                1 -> PasoProducto(
+                    webCompra = webCompra,
+                    productos = productos,
+                    precioCompra = precioCompra,
+                    errorMessage = errorMessage,
+                    onWebChange = {
+                        webCompra = it.lowercase().replace(" ", "")
+                        errorMessage = ""
+                    },
+                    onProductoChange = {
+                        productos = it
+                        errorMessage = ""
+                    },
+                    onPrecioChange = {
+                        if (it.all { c -> c.isDigit() || c == '.' }) {
+                            precioCompra = it
+                            errorMessage = ""
+                        }
+                    },
+                    onContinuar = {
+                        if (validarPaso1()) pasoActual = 2
                     }
                 )
 
-                IntlInput(
-                    label = "PRODUCTO",
-                    value = productos,
-                    placeholder = "Nombre del producto",
-                    icon = Icons.Outlined.Inventory2,
-                    onValueChange = { productos = it }
-                )
-
-                IntlInput(
-                    label = "PRECIO DE COMPRA",
-                    value = precioCompra,
-                    placeholder = "0.00",
-                    icon = Icons.Outlined.AttachMoney,
-                    keyboardType = KeyboardType.Decimal,
-                    onValueChange = {
-                        if (it.all { c -> c.isDigit() || c == '.' }) precioCompra = it
-                    }
-                )
-            }
-
-            IntlSectionCard(
-                title = "Seguimiento",
-                icon = Icons.Outlined.LocalShipping,
-                iconBg = IntlRedLight,
-                iconTint = IntlRed
-            ) {
-                TrackingInputCard(
+                2 -> PasoSeguimiento(
                     tracking = tracking,
+                    fechaSeleccionada = fechaSeleccionada,
+                    pesoEstimado = pesoEstimado,
+                    totalEstimado = totalEstimado,
+                    errorMessage = errorMessage,
                     onTrackingChange = {
                         tracking = it.uppercase().replace(" ", "")
+                        errorMessage = ""
                     },
-                    onHelpClick = {
-                        showTrackingHelp = true
-                    }
-                )
-
-                TrackingInfoHintCard(
-                    onClick = { showTrackingHelp = true }
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                IntlDateInput(
-                    label = "FECHA ESTIMADA DE LLEGADA",
-                    value = fechaSeleccionada,
-                    onClick = { showDatePicker = true }
-                )
-
-                IntlInput(
-                    label = "PESO ESTIMADO (KG)",
-                    value = pesoEstimado,
-                    placeholder = "0.00 kg",
-                    icon = Icons.Outlined.Scale,
-                    keyboardType = KeyboardType.Decimal,
-                    onValueChange = {
-                        if (it.all { c -> c.isDigit() || c == '.' }) pesoEstimado = it
-                    }
-                )
-            }
-
-            IntlTotalCard(
-                total = totalEstimado,
-                onInfoClick = { showAduanaDialog = true }
-            )
-
-            IntlSectionCard(
-                title = "Pago",
-                icon = Icons.Outlined.CreditCard,
-                iconBg = IntlBlueLight,
-                iconTint = IntlBlue
-            ) {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    IntlDropdownInput(
-                        label = "MÉTODO DE PAGO",
-                        value = metodoPago,
-                        placeholder = "Seleccionar método",
-                        icon = Icons.Outlined.AccountBalanceWallet,
-                        onClick = { expandedPago = true }
-                    )
-
-                    DropdownMenu(
-                        expanded = expandedPago,
-                        onDismissRequest = { expandedPago = false }
-                    ) {
-                        metodosPago.forEach { metodo ->
-                            DropdownMenuItem(
-                                text = { Text(metodo) },
-                                onClick = {
-                                    metodoPago = metodo
-                                    expandedPago = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-
-            PdfSelectorRow(
-                pdfNombre = pdfNombre,
-                onClick = { pdfPickerLauncher.launch(arrayOf("application/pdf")) }
-            )
-
-            if (errorMessage.isNotBlank()) {
-                Text(
-                    text = errorMessage,
-                    color = if (errorMessage.contains("✅")) IntlSuccessText else IntlRed,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                )
-            }
-
-            Button(
-                onClick = {
-                    when {
-                        webCompra.isBlank() ||
-                                productos.isBlank() ||
-                                precioCompra.isBlank() ||
-                                tracking.isBlank() ||
-                                fechaSeleccionada.isBlank() ||
-                                pesoEstimado.isBlank() ||
-                                metodoPago.isBlank() -> {
-                            errorMessage = "Completa todos los campos"
-                        }
-
-                        !esWebCompraValida(webCompra) -> {
-                            errorMessage = "La web de compra debe terminar en .com. Ejemplo: amazon.com"
-                        }
-
-                        productos.trim().length < 3 -> {
-                            errorMessage = "Ingresa un nombre de producto válido"
-                        }
-
-                        !esDecimalValido(precioCompra) ||
-                                precioCompra.toDoubleOrNull() == null ||
-                                precioCompra.toDouble() <= 0.0 -> {
-                            errorMessage = "Ingresa un precio de compra válido mayor a 0. Ejemplo: 25.99"
-                        }
-
-                        tracking.length < 6 -> {
-                            errorMessage = "Ingresa un número de tracking válido"
-                        }
-
-                        !esDecimalValido(pesoEstimado) ||
-                                pesoEstimado.toDoubleOrNull() == null ||
-                                pesoEstimado.toDouble() <= 0.0 -> {
-                            errorMessage = "Ingresa un peso estimado válido mayor a 0. Ejemplo: 1.50"
-                        }
-
-                        pdfUri == null -> {
-                            errorMessage = "Adjunta la factura PDF"
-                        }
-
-                        else -> {
-                            val email = sessionManager.getUserEmail()
-
-                            if (email.isNullOrEmpty()) {
-                                errorMessage = "Sesión inválida"
-                                return@Button
-                            }
-
-                            isSubmitting = true
+                    onFechaClick = { showDatePicker = true },
+                    onPesoChange = {
+                        if (it.all { c -> c.isDigit() || c == '.' }) {
+                            pesoEstimado = it
                             errorMessage = ""
-
-                            try {
-                                val input = context.contentResolver.openInputStream(pdfUri!!)
-                                val file = File.createTempFile("factura_", ".pdf", context.cacheDir)
-                                val output = FileOutputStream(file)
-
-                                input?.copyTo(output)
-                                input?.close()
-                                output.close()
-
-                                val requestFile =
-                                    file.asRequestBody("application/pdf".toMediaTypeOrNull())
-
-                                val pdfPart = MultipartBody.Part.createFormData(
-                                    "factura_pdf",
-                                    file.name,
-                                    requestFile
-                                )
-
-                                RetrofitClient.instance.createInternationalOrder(
-                                    email.toPlainRequestBody(),
-                                    "internacional".toPlainRequestBody(),
-                                    normalizarWebCompra(webCompra).toPlainRequestBody(),
-                                    productos.trim().toPlainRequestBody(),
-                                    precioCompra.trim().toPlainRequestBody(),
-                                    tracking.trim().toPlainRequestBody(),
-                                    fechaSeleccionada.toPlainRequestBody(),
-                                    pesoEstimado.trim().toPlainRequestBody(),
-                                    metodoPago.toPlainRequestBody(),
-                                    "%.2f".format(totalEstimado).toPlainRequestBody(),
-                                    pdfPart
-                                ).enqueue(object : Callback<BasicResponse> {
-                                    override fun onResponse(
-                                        call: Call<BasicResponse>,
-                                        response: Response<BasicResponse>
-                                    ) {
-                                        isSubmitting = false
-
-                                        if (response.isSuccessful) {
-                                            val result = response.body()
-
-                                            if (result?.success == true) {
-                                                navController.navigate("mis_pedidos") {
-                                                    popUpTo("client_lobby") {
-                                                        inclusive = false
-                                                    }
-                                                    launchSingleTop = true
-                                                }
-                                            } else {
-                                                errorMessage =
-                                                    result?.message ?: "Respuesta vacía del servidor"
-                                            }
-                                        } else {
-                                            errorMessage =
-                                                "HTTP ${response.code()}: ${response.errorBody()?.string()}"
-                                        }
-                                    }
-
-                                    override fun onFailure(
-                                        call: Call<BasicResponse>,
-                                        t: Throwable
-                                    ) {
-                                        isSubmitting = false
-                                        errorMessage = "Error: ${t.message}"
-                                    }
-                                })
-                            } catch (e: Exception) {
-                                isSubmitting = false
-                                errorMessage = "Error al procesar PDF"
-                            }
                         }
+                    },
+                    onHelpClick = { showTrackingHelp = true },
+                    onInfoClick = { showAduanaDialog = true },
+                    onAtras = {
+                        errorMessage = ""
+                        pasoActual = 1
+                    },
+                    onContinuar = {
+                        if (validarPaso2()) pasoActual = 3
                     }
-                },
-                enabled = !isSubmitting,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = IntlRed,
-                    contentColor = Color.White
                 )
-            ) {
-                Icon(Icons.Outlined.Send, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = if (isSubmitting) "Enviando..." else "Registrar pedido",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Black
+
+                else -> PasoPago(
+                    webCompra = webCompra,
+                    productos = productos,
+                    precioCompra = precioCompra,
+                    tracking = tracking,
+                    fechaSeleccionada = fechaSeleccionada,
+                    pesoEstimado = pesoEstimado,
+                    totalEstimado = totalEstimado,
+                    metodoPago = metodoPago,
+                    pdfNombre = pdfNombre,
+                    errorMessage = errorMessage,
+                    isSubmitting = isSubmitting,
+                    onMetodoChange = {
+                        metodoPago = it
+                        errorMessage = ""
+                    },
+                    onPdfClick = {
+                        pdfPickerLauncher.launch(arrayOf("application/pdf"))
+                    },
+                    onAtras = {
+                        errorMessage = ""
+                        pasoActual = 2
+                    },
+                    onEnviar = { enviarPedido() }
                 )
             }
-
-            Text(
-                text = "PEDIDO INTERNACIONAL",
-                color = IntlGrayLight,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 0.7.sp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
         }
     }
 
@@ -474,12 +397,11 @@ fun PedidoInternacionalScreen(navController: NavController) {
                         if (millis != null) {
                             val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
                             fechaSeleccionada = sdf.format(Date(millis))
+                            errorMessage = ""
                         }
                         showDatePicker = false
                     }
-                ) {
-                    Text("Aceptar")
-                }
+                ) { Text("Aceptar") }
             },
             dismissButton = {
                 TextButton(onClick = { showDatePicker = false }) {
@@ -503,7 +425,7 @@ fun PedidoInternacionalScreen(navController: NavController) {
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Outlined.PriorityHigh,
+                        Icons.Outlined.PriorityHigh,
                         contentDescription = null,
                         tint = IntlRed,
                         modifier = Modifier.size(28.dp)
@@ -511,15 +433,11 @@ fun PedidoInternacionalScreen(navController: NavController) {
                 }
             },
             title = {
-                Text(
-                    text = "Aviso de Aduana",
-                    color = IntlDark,
-                    fontWeight = FontWeight.Black
-                )
+                Text("Aviso de Aduana", color = IntlDark, fontWeight = FontWeight.Black)
             },
             text = {
                 Text(
-                    text = "Team Perucho Courier te informa: si tu compra supera los $200 dólares, la aduana puede aplicar un impuesto aproximado del 25% sobre el valor declarado. Te recomendamos revisar el monto de tu compra antes de registrar tu pedido.",
+                    "Team Perucho Courier te informa: si tu compra supera los $200 dólares, la aduana puede aplicar un impuesto aproximado del 25% sobre el valor declarado. Te recomendamos revisar el monto de tu compra antes de registrar tu pedido.",
                     color = IntlGrayText,
                     fontSize = 14.sp,
                     lineHeight = 20.sp,
@@ -529,16 +447,10 @@ fun PedidoInternacionalScreen(navController: NavController) {
             confirmButton = {
                 Button(
                     onClick = { showAduanaDialog = false },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = IntlBlue,
-                        contentColor = Color.White
-                    ),
+                    colors = ButtonDefaults.buttonColors(containerColor = IntlBlue),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(
-                        text = "Entendido",
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("Entendido", fontWeight = FontWeight.Bold)
                 }
             },
             containerColor = IntlCard,
@@ -547,9 +459,596 @@ fun PedidoInternacionalScreen(navController: NavController) {
     }
 
     if (showTrackingHelp) {
-        TrackingHelpDialog(
-            onDismiss = { showTrackingHelp = false }
+        TrackingHelpDialog(onDismiss = { showTrackingHelp = false })
+    }
+}
+
+@Composable
+private fun PasoProducto(
+    webCompra: String,
+    productos: String,
+    precioCompra: String,
+    errorMessage: String,
+    onWebChange: (String) -> Unit,
+    onProductoChange: (String) -> Unit,
+    onPrecioChange: (String) -> Unit,
+    onContinuar: () -> Unit
+) {
+    StepContainer {
+        InfoBanner()
+
+        IntlSectionCard(
+            title = "Tienda / Producto",
+            icon = Icons.Outlined.Storefront,
+            iconBg = IntlBlueLight,
+            iconTint = IntlBlue
+        ) {
+            IntlInput(
+                label = "WEB DE COMPRA",
+                value = webCompra,
+                placeholder = "ej: amazon.com",
+                icon = Icons.Outlined.Language,
+                keyboardType = KeyboardType.Uri,
+                onValueChange = onWebChange
+            )
+
+            IntlInput(
+                label = "PRODUCTO",
+                value = productos,
+                placeholder = "Nombre del producto",
+                icon = Icons.Outlined.Inventory2,
+                onValueChange = onProductoChange
+            )
+
+            IntlInput(
+                label = "PRECIO DE COMPRA",
+                value = precioCompra,
+                placeholder = "0.00",
+                icon = Icons.Outlined.AttachMoney,
+                keyboardType = KeyboardType.Decimal,
+                onValueChange = onPrecioChange
+            )
+        }
+
+        StepError(errorMessage)
+
+        PrimaryStepButton(
+            text = "Continuar",
+            icon = Icons.Outlined.ArrowForward,
+            onClick = onContinuar
         )
+    }
+}
+
+@Composable
+private fun PasoSeguimiento(
+    tracking: String,
+    fechaSeleccionada: String,
+    pesoEstimado: String,
+    totalEstimado: Double,
+    errorMessage: String,
+    onTrackingChange: (String) -> Unit,
+    onFechaClick: () -> Unit,
+    onPesoChange: (String) -> Unit,
+    onHelpClick: () -> Unit,
+    onInfoClick: () -> Unit,
+    onAtras: () -> Unit,
+    onContinuar: () -> Unit
+) {
+    StepContainer {
+        IntlSectionCard(
+            title = "Seguimiento",
+            icon = Icons.Outlined.LocalShipping,
+            iconBg = IntlRedLight,
+            iconTint = IntlRed
+        ) {
+            TrackingInputCard(
+                tracking = tracking,
+                onTrackingChange = onTrackingChange,
+                onHelpClick = onHelpClick
+            )
+
+            TrackingInfoHintCard(onClick = onHelpClick)
+            Spacer(modifier = Modifier.height(10.dp))
+
+            IntlDateInput(
+                label = "FECHA ESTIMADA DE LLEGADA",
+                value = fechaSeleccionada,
+                onClick = onFechaClick
+            )
+
+            IntlInput(
+                label = "PESO ESTIMADO (KG)",
+                value = pesoEstimado,
+                placeholder = "0.00 kg",
+                icon = Icons.Outlined.Scale,
+                keyboardType = KeyboardType.Decimal,
+                onValueChange = onPesoChange
+            )
+        }
+
+        IntlTotalCard(total = totalEstimado, onInfoClick = onInfoClick)
+        StepError(errorMessage)
+
+        StepNavigationButtons(
+            onBack = onAtras,
+            onNext = onContinuar
+        )
+    }
+}
+
+@Composable
+private fun PasoPago(
+    webCompra: String,
+    productos: String,
+    precioCompra: String,
+    tracking: String,
+    fechaSeleccionada: String,
+    pesoEstimado: String,
+    totalEstimado: Double,
+    metodoPago: String,
+    pdfNombre: String,
+    errorMessage: String,
+    isSubmitting: Boolean,
+    onMetodoChange: (String) -> Unit,
+    onPdfClick: () -> Unit,
+    onAtras: () -> Unit,
+    onEnviar: () -> Unit
+) {
+    StepContainer {
+        IntlSectionCard(
+            title = "Método de pago",
+            icon = Icons.Outlined.CreditCard,
+            iconBg = IntlBlueLight,
+            iconTint = IntlBlue
+        ) {
+            PaymentMethodCards(
+                selectedMethod = metodoPago,
+                onSelected = onMetodoChange
+            )
+        }
+
+        PdfSelectorRow(
+            pdfNombre = pdfNombre,
+            onClick = onPdfClick
+        )
+
+        OrderSummaryCard(
+            webCompra = normalizarWebCompra(webCompra),
+            producto = productos,
+            precioCompra = precioCompra,
+            tracking = tracking,
+            fecha = fechaSeleccionada,
+            peso = pesoEstimado,
+            metodoPago = metodoPago,
+            total = totalEstimado
+        )
+
+        StepError(errorMessage)
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            OutlinedButton(
+                onClick = onAtras,
+                enabled = !isSubmitting,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(54.dp),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.5.dp, IntlBlue)
+            ) {
+                Icon(Icons.Outlined.ArrowBack, contentDescription = null, tint = IntlBlue)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Atrás", color = IntlBlue, fontWeight = FontWeight.Black)
+            }
+
+            Button(
+                onClick = onEnviar,
+                enabled = !isSubmitting,
+                modifier = Modifier
+                    .weight(1.45f)
+                    .height(54.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = IntlRed)
+            ) {
+                if (isSubmitting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Enviando...", fontWeight = FontWeight.Black)
+                } else {
+                    Icon(Icons.Outlined.Send, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Registrar pedido", fontWeight = FontWeight.Black)
+                }
+            }
+        }
+
+        Text(
+            text = "PEDIDO INTERNACIONAL",
+            color = IntlGrayLight,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 0.7.sp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 10.dp),
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun StepContainer(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        content = content
+    )
+}
+
+@Composable
+private fun IntlStepIndicator(currentStep: Int) {
+    val steps = listOf("Producto", "Tracking", "Pago")
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(IntlCard)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            steps.forEachIndexed { index, title ->
+                val number = index + 1
+                val completed = number < currentStep
+                val active = number == currentStep
+                val circleColor = when {
+                    completed || active -> IntlBlue
+                    else -> IntlGrayBorder
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.width(70.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(circleColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (completed) {
+                            Icon(
+                                Icons.Outlined.Check,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        } else {
+                            Text(
+                                number.toString(),
+                                color = if (active) Color.White else IntlGrayText,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(5.dp))
+
+                    Text(
+                        title,
+                        color = if (active || completed) IntlBlue else IntlGrayLight,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1
+                    )
+                }
+
+                if (index < steps.lastIndex) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                if (currentStep > number) IntlBlue else IntlGrayBorder
+                            )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaymentMethodCards(
+    selectedMethod: String,
+    onSelected: (String) -> Unit
+) {
+    val methods = listOf(
+        Triple("Yape", R.drawable.ic_yape, Color(0xFF6F2DBD)),
+        Triple("Plin", R.drawable.ic_plin, Color(0xFF00B5E2)),
+        Triple("BCP", R.drawable.ic_bcp, Color(0xFF0033A0)),
+        Triple("Efectivo", R.drawable.ic_efectivo, Color(0xFF666666))
+    )
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+
+        methods.forEach { (nombre, imagen, color) ->
+
+            val seleccionado = nombre == selectedMethod
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        onSelected(nombre)
+                    },
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(
+                    if (seleccionado) 2.dp else 1.dp,
+                    if (seleccionado) IntlBlue else IntlGrayBorder
+                ),
+                colors = CardDefaults.cardColors(
+                    containerColor =
+                        if (seleccionado)
+                            IntlBlueLight
+                        else
+                            IntlFieldBg
+                )
+            ) {
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    Image(
+                        painter = painterResource(imagen),
+                        contentDescription = nombre,
+                        modifier = Modifier.size(42.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+
+                        Text(
+                            nombre,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = IntlDark
+                        )
+
+                        Text(
+                            when(nombre){
+
+                                "Yape" ->
+                                    "Pago inmediato"
+
+                                "Plin" ->
+                                    "Transferencia"
+
+                                "BCP" ->
+                                    "Depósito o transferencia"
+
+                                "Interbank" ->
+                                    "Depósito o transferencia"
+
+                                else ->
+                                    "Pago contra entrega"
+                            },
+                            color = IntlGrayText,
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    RadioButton(
+                        selected = seleccionado,
+                        onClick = {
+                            onSelected(nombre)
+                        },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = color
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+@Composable
+private fun OrderSummaryCard(
+    webCompra: String,
+    producto: String,
+    precioCompra: String,
+    tracking: String,
+    fecha: String,
+    peso: String,
+    metodoPago: String,
+    total: Double
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(IntlCard)
+            .padding(14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.ReceiptLong, contentDescription = null, tint = IntlBlue)
+            Spacer(modifier = Modifier.width(9.dp))
+            Text(
+                "RESUMEN DEL PEDIDO",
+                color = IntlDark,
+                fontWeight = FontWeight.Black,
+                fontSize = 12.sp
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        SummaryRow("Web", webCompra)
+        SummaryRow("Producto", producto)
+        SummaryRow("Precio de compra", "$${precioCompra.ifBlank { "0.00" }}")
+        SummaryRow("Tracking", tracking)
+        SummaryRow("Fecha estimada", fecha)
+        SummaryRow("Peso estimado", "${peso.ifBlank { "0.00" }} kg")
+        SummaryRow("Método de pago", metodoPago.ifBlank { "Sin seleccionar" })
+
+        HorizontalDivider(
+            modifier = Modifier.padding(vertical = 10.dp),
+            color = IntlGrayBorder
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                "TOTAL ESTIMADO",
+                color = IntlGrayText,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Black
+            )
+            Text(
+                "$${"%.2f".format(Locale.US, total)}",
+                color = IntlBlue,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Black
+            )
+        }
+    }
+}
+
+@Composable
+private fun SummaryRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            label,
+            color = IntlGrayText,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(0.42f)
+        )
+        Text(
+            value,
+            color = IntlDark,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(0.58f)
+        )
+    }
+}
+
+@Composable
+private fun StepError(message: String) {
+    if (message.isNotBlank()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(IntlRedLight)
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.ErrorOutline,
+                contentDescription = null,
+                tint = IntlRed,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                message,
+                color = IntlRed,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+private fun PrimaryStepButton(
+    text: String,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(54.dp),
+        shape = RoundedCornerShape(14.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = IntlBlue)
+    ) {
+        Text(text, fontSize = 15.sp, fontWeight = FontWeight.Black)
+        Spacer(modifier = Modifier.width(8.dp))
+        Icon(icon, contentDescription = null)
+    }
+}
+
+@Composable
+private fun StepNavigationButtons(
+    onBack: () -> Unit,
+    onNext: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        OutlinedButton(
+            onClick = onBack,
+            modifier = Modifier
+                .weight(1f)
+                .height(54.dp),
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(1.5.dp, IntlBlue)
+        ) {
+            Icon(Icons.Outlined.ArrowBack, contentDescription = null, tint = IntlBlue)
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Atrás", color = IntlBlue, fontWeight = FontWeight.Black)
+        }
+
+        Button(
+            onClick = onNext,
+            modifier = Modifier
+                .weight(1.25f)
+                .height(54.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = IntlBlue)
+        ) {
+            Text("Continuar", fontWeight = FontWeight.Black)
+            Spacer(modifier = Modifier.width(6.dp))
+            Icon(Icons.Outlined.ArrowForward, contentDescription = null)
+        }
     }
 }
 
@@ -559,11 +1058,7 @@ private fun IntlTopBar(navController: NavController) {
         modifier = Modifier
             .fillMaxWidth()
             .height(96.dp)
-            .background(
-                Brush.horizontalGradient(
-                    listOf(IntlBlueDark, IntlBlue)
-                )
-            )
+            .background(Brush.horizontalGradient(listOf(IntlBlueDark, IntlBlue)))
             .statusBarsPadding()
             .padding(horizontal = 16.dp)
     ) {
@@ -589,7 +1084,7 @@ private fun IntlTopBar(navController: NavController) {
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.ArrowBack,
+                    Icons.Outlined.ArrowBack,
                     contentDescription = "Volver",
                     tint = Color.White
                 )
@@ -599,14 +1094,13 @@ private fun IntlTopBar(navController: NavController) {
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Pedido Internacional",
+                    "Pedido Internacional",
                     color = Color.White,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Black
                 )
-
                 Text(
-                    text = "USA / China → Perú",
+                    "USA / China → Perú",
                     color = Color.White.copy(alpha = 0.68f),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
@@ -614,7 +1108,7 @@ private fun IntlTopBar(navController: NavController) {
             }
 
             Icon(
-                imageVector = Icons.Outlined.Language,
+                Icons.Outlined.Language,
                 contentDescription = null,
                 tint = Color.White.copy(alpha = 0.55f),
                 modifier = Modifier.size(26.dp)
@@ -628,8 +1122,6 @@ private fun InfoBanner() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp)
-            .padding(top = 12.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(IntlCard)
             .padding(12.dp),
@@ -643,7 +1135,7 @@ private fun InfoBanner() {
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Outlined.Info,
+                Icons.Outlined.Info,
                 contentDescription = null,
                 tint = IntlBlue,
                 modifier = Modifier.size(19.dp)
@@ -653,7 +1145,7 @@ private fun InfoBanner() {
         Spacer(modifier = Modifier.width(10.dp))
 
         Text(
-            text = "Tarifa: $8.5 por kilo. Recibirás la dirección de nuestro almacén y asesoramiento personalizado.",
+            "Tarifa: $8.5 por kilo. Recibirás la dirección de nuestro almacén y asesoramiento personalizado.",
             color = IntlGrayText,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
@@ -685,18 +1177,13 @@ private fun IntlSectionCard(
                     .background(iconBg),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.size(19.dp)
-                )
+                Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(19.dp))
             }
 
             Spacer(modifier = Modifier.width(9.dp))
 
             Text(
-                text = title.uppercase(),
+                title.uppercase(),
                 color = IntlDark,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Black,
@@ -705,7 +1192,6 @@ private fun IntlSectionCard(
         }
 
         Spacer(modifier = Modifier.height(14.dp))
-
         content()
     }
 }
@@ -717,7 +1203,7 @@ private fun TrackingInputCard(
     onHelpClick: () -> Unit
 ) {
     Text(
-        text = "NÚMERO DE TRACKING",
+        "NÚMERO DE TRACKING",
         color = IntlGrayText,
         fontSize = 10.sp,
         fontWeight = FontWeight.Black,
@@ -731,12 +1217,7 @@ private fun TrackingInputCard(
         onValueChange = onTrackingChange,
         singleLine = true,
         leadingIcon = {
-            Icon(
-                imageVector = Icons.Outlined.QrCode2,
-                contentDescription = null,
-                tint = IntlGrayLight,
-                modifier = Modifier.size(20.dp)
-            )
+            Icon(Icons.Outlined.QrCode2, null, tint = IntlGrayLight, modifier = Modifier.size(20.dp))
         },
         trailingIcon = {
             Box(
@@ -744,20 +1225,15 @@ private fun TrackingInputCard(
                     .size(36.dp)
                     .clip(CircleShape)
                     .background(IntlBlueLight)
-                    .clickable { onHelpClick() },
+                    .clickable(onClick = onHelpClick),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "?",
-                    color = IntlBlue,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Black
-                )
+                Text("?", color = IntlBlue, fontSize = 18.sp, fontWeight = FontWeight.Black)
             }
         },
         placeholder = {
             Text(
-                text = "Ej: 9400111899223754906185",
+                "Ej: 9400111899223754906185",
                 color = IntlGrayLight,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold
@@ -775,15 +1251,13 @@ private fun TrackingInputCard(
 }
 
 @Composable
-private fun TrackingInfoHintCard(
-    onClick: () -> Unit
-) {
+private fun TrackingInfoHintCard(onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(IntlInfoBg)
-            .clickable { onClick() }
+            .clickable(onClick = onClick)
             .padding(14.dp),
         verticalAlignment = Alignment.Top
     ) {
@@ -794,28 +1268,21 @@ private fun TrackingInfoHintCard(
                 .background(IntlBlue),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Outlined.Info,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(18.dp)
-            )
+            Icon(Icons.Outlined.Info, null, tint = Color.White, modifier = Modifier.size(18.dp))
         }
 
         Spacer(modifier = Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "¿Dónde encuentro mi tracking number?",
+                "¿Dónde encuentro mi tracking number?",
                 color = IntlBlue,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Black
             )
-
             Spacer(modifier = Modifier.height(3.dp))
-
             Text(
-                text = "Presiona el signo de interrogación para ver ejemplos de Amazon y eBay.",
+                "Presiona el signo de interrogación para ver ejemplos de Amazon y eBay.",
                 color = IntlGrayText,
                 fontSize = 12.sp,
                 lineHeight = 17.sp,
@@ -826,9 +1293,7 @@ private fun TrackingInfoHintCard(
 }
 
 @Composable
-private fun TrackingHelpDialog(
-    onDismiss: () -> Unit
-) {
+private fun TrackingHelpDialog(onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Card(
             modifier = Modifier
@@ -843,19 +1308,16 @@ private fun TrackingHelpDialog(
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "¿Dónde encuentro mi Tracking Number?",
+                            "¿Dónde encuentro mi Tracking Number?",
                             color = IntlDark,
                             fontSize = 19.sp,
                             fontWeight = FontWeight.Black
                         )
-
                         Text(
-                            text = "Ejemplos de Amazon y eBay",
+                            "Ejemplos de Amazon y eBay",
                             color = IntlGrayText,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold
@@ -863,11 +1325,7 @@ private fun TrackingHelpDialog(
                     }
 
                     IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.Outlined.Close,
-                            contentDescription = "Cerrar",
-                            tint = IntlDark
-                        )
+                        Icon(Icons.Outlined.Close, "Cerrar", tint = IntlDark)
                     }
                 }
 
@@ -893,7 +1351,7 @@ private fun TrackingHelpDialog(
                     verticalAlignment = Alignment.Top
                 ) {
                     Icon(
-                        imageVector = Icons.Outlined.Lightbulb,
+                        Icons.Outlined.Lightbulb,
                         contentDescription = null,
                         tint = IntlRed,
                         modifier = Modifier.size(22.dp)
@@ -903,14 +1361,13 @@ private fun TrackingHelpDialog(
 
                     Column {
                         Text(
-                            text = "Importante",
+                            "Importante",
                             color = IntlRed,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Black
                         )
-
                         Text(
-                            text = "Copia y pega el número de seguimiento exactamente como aparece en Amazon o eBay para un mejor rastreo de tu pedido.",
+                            "Copia y pega el número de seguimiento exactamente como aparece en Amazon o eBay para un mejor rastreo de tu pedido.",
                             color = IntlDark,
                             fontSize = 12.sp,
                             lineHeight = 17.sp,
@@ -927,15 +1384,9 @@ private fun TrackingHelpDialog(
                         .fillMaxWidth()
                         .height(50.dp),
                     shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = IntlBlue,
-                        contentColor = Color.White
-                    )
+                    colors = ButtonDefaults.buttonColors(containerColor = IntlBlue)
                 ) {
-                    Text(
-                        text = "Entendido",
-                        fontWeight = FontWeight.Black
-                    )
+                    Text("Entendido", fontWeight = FontWeight.Black)
                 }
             }
         }
@@ -952,7 +1403,7 @@ private fun IntlInput(
     onValueChange: (String) -> Unit
 ) {
     Text(
-        text = label,
+        label,
         color = IntlGrayText,
         fontSize = 10.sp,
         fontWeight = FontWeight.Black,
@@ -966,16 +1417,11 @@ private fun IntlInput(
         onValueChange = onValueChange,
         singleLine = true,
         leadingIcon = {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = IntlGrayLight,
-                modifier = Modifier.size(20.dp)
-            )
+            Icon(icon, null, tint = IntlGrayLight, modifier = Modifier.size(20.dp))
         },
         placeholder = {
             Text(
-                text = placeholder,
+                placeholder,
                 color = IntlGrayLight,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold
@@ -999,7 +1445,7 @@ private fun IntlDateInput(
     onClick: () -> Unit
 ) {
     Text(
-        text = label,
+        label,
         color = IntlGrayText,
         fontSize = 10.sp,
         fontWeight = FontWeight.Black,
@@ -1008,100 +1454,45 @@ private fun IntlDateInput(
 
     Spacer(modifier = Modifier.height(5.dp))
 
-    OutlinedTextField(
-        value = value,
-        onValueChange = {},
-        readOnly = true,
-        singleLine = true,
-        enabled = false,
-        leadingIcon = {
-            Icon(
-                imageVector = Icons.Outlined.CalendarMonth,
-                contentDescription = null,
-                tint = IntlGrayLight,
-                modifier = Modifier.size(20.dp)
-            )
-        },
-        trailingIcon = {
-            Icon(
-                imageVector = Icons.Default.ArrowDropDown,
-                contentDescription = null,
-                tint = IntlGrayLight
-            )
-        },
-        placeholder = {
-            Text(
-                text = "Seleccionar fecha",
-                color = IntlGrayLight,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        },
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
-            .clickable { onClick() },
-        shape = RoundedCornerShape(12.dp),
-        colors = intlFieldColors()
-    )
+            .clickable(onClick = onClick)
+    ) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {},
+            readOnly = true,
+            singleLine = true,
+            leadingIcon = {
+                Icon(Icons.Outlined.CalendarMonth, null, tint = IntlGrayLight)
+            },
+            trailingIcon = {
+                Icon(Icons.Default.ArrowDropDown, null, tint = IntlGrayLight)
+            },
+            placeholder = {
+                Text(
+                    "Seleccionar fecha",
+                    color = IntlGrayLight,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = intlFieldColors()
+        )
+
+        Spacer(
+            modifier = Modifier
+                .matchParentSize()
+                .clickable(onClick = onClick)
+        )
+    }
 
     Spacer(modifier = Modifier.height(10.dp))
-}
-
-@Composable
-private fun IntlDropdownInput(
-    label: String,
-    value: String,
-    placeholder: String,
-    icon: ImageVector,
-    onClick: () -> Unit
-) {
-    Text(
-        text = label,
-        color = IntlGrayText,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Black,
-        letterSpacing = 0.5.sp
-    )
-
-    Spacer(modifier = Modifier.height(5.dp))
-
-    OutlinedTextField(
-        value = value,
-        onValueChange = {},
-        readOnly = true,
-        enabled = false,
-        singleLine = true,
-        leadingIcon = {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = IntlGrayLight,
-                modifier = Modifier.size(20.dp)
-            )
-        },
-        trailingIcon = {
-            Icon(
-                imageVector = Icons.Default.ArrowDropDown,
-                contentDescription = null,
-                tint = IntlGrayLight
-            )
-        },
-        placeholder = {
-            Text(
-                text = placeholder,
-                color = IntlGrayLight,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp)
-            .clickable { onClick() },
-        shape = RoundedCornerShape(12.dp),
-        colors = intlFieldColors()
-    )
 }
 
 @Composable
@@ -1120,26 +1511,23 @@ private fun IntlTotalCard(
     ) {
         Column {
             Text(
-                text = "TOTAL ESTIMADO",
+                "TOTAL ESTIMADO",
                 color = Color.White.copy(alpha = 0.65f),
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.5.sp
             )
-
             Text(
-                text = "$${"%.2f".format(total)}",
+                "$${"%.2f".format(Locale.US, total)}",
                 color = Color.White,
                 fontSize = 23.sp,
                 fontWeight = FontWeight.Black
             )
         }
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "Peso × $8.5/kg\nSe actualiza al ingresar peso",
+                "Peso × $8.5/kg\nSe actualiza al ingresar peso",
                 color = Color.White.copy(alpha = 0.68f),
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
@@ -1151,13 +1539,13 @@ private fun IntlTotalCard(
             Box(
                 modifier = Modifier
                     .size(28.dp)
-                    .clip(RoundedCornerShape(50.dp))
+                    .clip(CircleShape)
                     .background(Color.White.copy(alpha = 0.18f))
-                    .clickable { onInfoClick() },
+                    .clickable(onClick = onInfoClick),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.PriorityHigh,
+                    Icons.Outlined.PriorityHigh,
                     contentDescription = "Información aduana",
                     tint = Color.White,
                     modifier = Modifier.size(19.dp)
@@ -1181,7 +1569,7 @@ private fun PdfSelectorRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = Icons.Outlined.PictureAsPdf,
+            Icons.Outlined.PictureAsPdf,
             contentDescription = null,
             tint = IntlRed,
             modifier = Modifier.size(25.dp)
@@ -1191,15 +1579,15 @@ private fun PdfSelectorRow(
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Comprobante de compra",
+                "Comprobante de compra",
                 color = IntlDark,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Black
             )
 
             Text(
-                text = if (pdfNombre == "Ningún archivo seleccionado") {
-                    "Obligatorio · Adjuntar comprobante"
+                if (pdfNombre == "Ningún archivo seleccionado") {
+                    "Obligatorio · Adjuntar comprobante PDF"
                 } else {
                     pdfNombre
                 },
@@ -1217,7 +1605,7 @@ private fun PdfSelectorRow(
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
         ) {
             Text(
-                text = "Seleccionar",
+                if (pdfNombre == "Ningún archivo seleccionado") "Seleccionar" else "Cambiar",
                 color = IntlBlue,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black
@@ -1231,7 +1619,7 @@ private fun intlFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedContainerColor = IntlFieldBg,
     unfocusedContainerColor = IntlFieldBg,
     disabledContainerColor = IntlFieldBg,
-    focusedBorderColor = IntlGrayBorder,
+    focusedBorderColor = IntlBlue,
     unfocusedBorderColor = IntlGrayBorder,
     disabledBorderColor = IntlGrayBorder,
     cursorColor = IntlBlue,
@@ -1254,10 +1642,7 @@ private fun normalizarWebCompra(input: String): String {
 
 private fun esWebCompraValida(input: String): Boolean {
     val web = normalizarWebCompra(input)
-
-    return web.matches(
-        Regex("^[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)*\\.com$")
-    )
+    return web.matches(Regex("^[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)*\\.com$"))
 }
 
 private fun esDecimalValido(input: String): Boolean {

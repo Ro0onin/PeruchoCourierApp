@@ -1,10 +1,13 @@
 package com.example.peruchocourierapp.screens
 
+import androidx.compose.foundation.clickable
+import com.google.android.gms.maps.model.LatLng
+
+
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,9 +15,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,6 +32,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -263,6 +270,7 @@ fun PedidosDisponiblesScreen(navController: NavController) {
                 else -> {
                     items(orders) { order ->
                         PedidoDisponibleCard(
+                            navController = navController,
                             colors = colors,
                             order = order,
                             isAccepting = acceptingOrderId == order.id,
@@ -384,7 +392,7 @@ private fun HeaderPedidosDisponibles(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50.dp))
-                    .background(Color.White.copy(alpha = 0.15f))
+                    .background(DriverRed)
                     .padding(horizontal = 12.dp, vertical = 6.dp)
             ) {
                 Text(
@@ -400,141 +408,205 @@ private fun HeaderPedidosDisponibles(
 
 @Composable
 private fun PedidoDisponibleCard(
+    navController: NavController,
     colors: AvailableOrdersColors,
     order: Order,
     isAccepting: Boolean,
     onAccept: () -> Unit
 ) {
+    val context = LocalContext.current
+    var showProductPreview by remember(order.id) {
+        mutableStateOf(false)
+    }
+
+    val fotoUrl = remember(order.foto_paquete) {
+        obtenerUrlFotoPaquete(order.foto_paquete)
+    }
+
+    val pickupPoint = remember(order.pickup_lat, order.pickup_lng) {
+        val lat = order.pickup_lat?.toDoubleOrNull()
+        val lng = order.pickup_lng?.toDoubleOrNull()
+
+        if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+            LatLng(lat, lng)
+        } else {
+            null
+        }
+    }
+
+    val dropoffPoint = remember(order.dropoff_lat, order.dropoff_lng) {
+        val lat = order.dropoff_lat?.toDoubleOrNull()
+        val lng = order.dropoff_lng?.toDoubleOrNull()
+
+        if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+            LatLng(lat, lng)
+        } else {
+            null
+        }
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.5.dp, colors.border),
+        border = BorderStroke(1.dp, colors.border),
         colors = CardDefaults.cardColors(containerColor = colors.cardBg)
     ) {
-        Column(
-            modifier = Modifier.padding(14.dp)
-        ) {
-            Row(verticalAlignment = Alignment.Top) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(colors.iconSoftBg),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = null,
-                        tint = DriverBlue,
-                        modifier = Modifier.size(25.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    RouteRow(
-                        colors = colors,
-                        color = DriverGreen,
-                        text = order.pickup_address ?: "Recojo no disponible",
-                        strong = true
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .padding(start = 4.5.dp, top = 3.dp, bottom = 3.dp)
-                            .width(1.5.dp)
-                            .height(12.dp)
-                            .background(colors.border)
-                    )
-
-                    RouteRow(
-                        colors = colors,
-                        color = DriverRed,
-                        text = order.dropoff_address ?: "Entrega no disponible",
-                        strong = false
-                    )
-                }
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Text(
+                    text = tiempoRelativo(order.created_at),
+                    color = colors.subtleText,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(9.dp)
-            ) {
+            RouteRow(colors, DriverGreen, order.pickup_address ?: "Recojo no disponible", true)
+            Box(
+                modifier = Modifier
+                    .padding(start = 4.5.dp, top = 3.dp, bottom = 3.dp)
+                    .width(1.5.dp)
+                    .height(18.dp)
+                    .background(colors.border)
+            )
+            RouteRow(colors, DriverRed, order.dropoff_address ?: "Entrega no disponible", true)
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "S/ ${order.total ?: "-"}",
-                    color = DriverBlue,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Black
+                    color = DriverGreen,
+                    fontSize = 23.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Monospace
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Icon(Icons.Default.LocationOn, null, tint = DriverRed, modifier = Modifier.size(15.dp))
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                    text = "${order.distancia_km ?: "-"} km",
+                    color = colors.subtleText,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                PaymentBadge(order.metodo_pago ?: "-")
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = {
+                    val orderId = order.id ?: return@OutlinedButton
+
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.apply {
+                            set("preview_order_id", orderId)
+                            set("preview_total", order.total ?: "0.00")
+                            set("preview_distance", order.distancia_km ?: "0")
+                            set("preview_pickup_address", order.pickup_address ?: "")
+                            set("preview_dropoff_address", order.dropoff_address ?: "")
+                            set("preview_pickup_lat", pickupPoint?.latitude)
+                            set("preview_pickup_lng", pickupPoint?.longitude)
+                            set("preview_dropoff_lat", dropoffPoint?.latitude)
+                            set("preview_dropoff_lng", dropoffPoint?.longitude)
+                        }
+
+                    navController.navigate("vista_ruta_pedido")
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(10.dp),
+                border = BorderStroke(1.dp, colors.border),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = DriverBlue
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null,
+                    modifier = Modifier.size(17.dp)
                 )
 
-                MetaDot(colors)
+                Spacer(modifier = Modifier.width(7.dp))
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.LocationOn,
-                        contentDescription = null,
-                        tint = colors.muted,
-                        modifier = Modifier.size(15.dp)
-                    )
-
-                    Spacer(modifier = Modifier.width(3.dp))
-
-                    Text(
-                        text = "${order.distancia_km ?: "-"} km",
-                        color = colors.muted,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                }
-
-                MetaDot(colors)
-
-                PaymentBadge(
-                    colors = colors,
-                    payment = order.metodo_pago ?: "-"
+                Text(
+                    text = "Ver ruta antes de aceptar",
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.ExtraBold
                 )
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            Text(
-                text = "Producto a recoger",
-                color = colors.muted,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            val fotoUrl = obtenerUrlFotoPaquete(order.foto_paquete)
-
-            if (fotoUrl != null) {
-                AsyncImage(
-                    model = fotoUrl,
-                    contentDescription = "Foto del paquete",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp)
-                        .clip(RoundedCornerShape(12.dp)),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(86.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(colors.emptyPhotoBg),
-                    contentAlignment = Alignment.Center
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = fotoUrl != null) {
+                        showProductPreview = true
+                    },
+                color = colors.fieldBg,
+                shape = RoundedCornerShape(11.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(9.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (fotoUrl != null) {
+                        AsyncImage(
+                            model = fotoUrl,
+                            contentDescription = "Foto del producto",
+                            modifier = Modifier
+                                .size(58.dp)
+                                .clip(RoundedCornerShape(9.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(58.dp)
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(colors.emptyPhotoBg),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Person, null, tint = colors.subtleText)
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "PRODUCTO A RECOGER",
+                            color = colors.subtleText,
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 0.4.sp
+                        )
+                        Text(
+                            text = buildString {
+                                append(order.categoria ?: "Paquete")
+                                if (!order.descripcion.isNullOrBlank()) {
+                                    append(" · ")
+                                    append(order.descripcion)
+                                }
+                            },
+                            color = colors.muted,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
                     Text(
-                        text = "El cliente no adjuntó foto",
-                        color = colors.muted,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
+                        text = if (fotoUrl != null) "Ver" else "Sin foto",
+                        color = if (fotoUrl != null) DriverBlue else colors.subtleText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold
                     )
                 }
             }
@@ -544,32 +616,144 @@ private fun PedidoDisponibleCard(
             Button(
                 onClick = onAccept,
                 enabled = !isAccepting,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = DriverBlue,
+                    containerColor = DriverRed,
                     contentColor = Color.White,
                     disabledContainerColor = colors.border,
                     disabledContentColor = colors.muted
                 )
             ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-
-                Spacer(modifier = Modifier.width(6.dp))
-
+                Icon(Icons.Default.Check, null, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(7.dp))
                 Text(
-                    text = if (isAccepting) "Aceptando..." else "Aceptar pedido",
+                    if (isAccepting) {
+                        "Aceptando..."
+                    } else {
+                        "Aceptar ruta por S/ ${order.total ?: "-"}"
+                    },
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Black
                 )
             }
         }
+    }
+
+    if (showProductPreview && fotoUrl != null) {
+        Dialog(
+            onDismissRequest = {
+                showProductPreview = false
+            },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                dismissOnBackPress = true,
+                dismissOnClickOutside = true
+            )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.88f))
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+            ) {
+                AsyncImage(
+                    model = fotoUrl,
+                    contentDescription = "Imagen completa del producto",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight()
+                        .padding(
+                            start = 14.dp,
+                            end = 14.dp,
+                            top = 68.dp,
+                            bottom = 92.dp
+                        )
+                        .clip(RoundedCornerShape(18.dp)),
+                    contentScale = ContentScale.Fit
+                )
+
+                IconButton(
+                    onClick = {
+                        showProductPreview = false
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 12.dp, end = 14.dp)
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.14f))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Cerrar imagen",
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color.Transparent,
+                                    Color.Black.copy(alpha = 0.92f)
+                                )
+                            )
+                        )
+                        .padding(
+                            start = 20.dp,
+                            end = 20.dp,
+                            top = 28.dp,
+                            bottom = 18.dp
+                        )
+                ) {
+                    Text(
+                        text = "Producto a recoger",
+                        color = Color.White,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = buildString {
+                            append(order.categoria ?: "Paquete")
+
+                            if (!order.descripcion.isNullOrBlank()) {
+                                append(" · ")
+                                append(order.descripcion)
+                            }
+                        },
+                        color = Color.White.copy(alpha = 0.82f),
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun tiempoRelativo(createdAt: String?): String {
+    if (createdAt.isNullOrBlank()) return ""
+    return try {
+        val formatter = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+        val created = formatter.parse(createdAt) ?: return ""
+        val minutes = ((System.currentTimeMillis() - created.time) / 60_000L).coerceAtLeast(0L)
+        when {
+            minutes < 1 -> "ahora"
+            minutes < 60 -> "hace $minutes min"
+            minutes < 1_440 -> "hace ${minutes / 60} h"
+            else -> "hace ${minutes / 1_440} d"
+        }
+    } catch (_: Exception) {
+        ""
     }
 }
 
@@ -627,22 +811,36 @@ private fun MetaDot(
 
 @Composable
 private fun PaymentBadge(
-    colors: AvailableOrdersColors,
     payment: String
 ) {
-    val isBcp = payment.equals("BCP", ignoreCase = true)
+    val icon = when (payment.trim().uppercase()) {
+        "YAPE" -> R.drawable.ic_yape
+        "PLIN" -> R.drawable.ic_plin
+        "EFECTIVO" -> R.drawable.ic_efectivo
+        else -> null
+    }
 
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50.dp))
-            .background(if (isBcp) colors.bcpBg else colors.paymentBg)
-            .padding(horizontal = 10.dp, vertical = 4.dp)
-    ) {
-        Text(
-            text = payment,
-            color = if (isBcp) colors.bcpText else DriverBlue,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Black
+    if (icon != null) {
+        Image(
+            painter = painterResource(icon),
+            contentDescription = payment,
+            modifier = Modifier
+                .height(30.dp)
+                .wrapContentWidth(),
+            contentScale = ContentScale.Fit
         )
+    } else {
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = Color(0xFF1A4FBF).copy(alpha = 0.12f)
+        ) {
+            Text(
+                text = payment,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                color = Color(0xFF1A4FBF),
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp
+            )
+        }
     }
 }

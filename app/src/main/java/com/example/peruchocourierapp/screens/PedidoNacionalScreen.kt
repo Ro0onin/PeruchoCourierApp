@@ -27,14 +27,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.example.peruchocourierapp.R
@@ -140,9 +145,13 @@ fun PedidoNacionalScreen(navController: NavController) {
     var showFotoPopup by remember { mutableStateOf(false) }
     var showComentarioPopup by remember { mutableStateOf(false) }
     var showMotorizadoTarifasPopup by remember { mutableStateOf(false) }
+    var showPedidoExitosoPopup by remember { mutableStateOf(false) }
 
     var tarifaMotorizado by remember { mutableStateOf("plana") }
     var destinatarioPaga by remember { mutableStateOf(false) }
+    var pedidoCreadoId by remember {
+        mutableStateOf<Int?>(null)
+    }
 
     val pesoDouble = pesoKg.replace(",", ".").toDoubleOrNull()
 
@@ -349,7 +358,7 @@ fun PedidoNacionalScreen(navController: NavController) {
                     pesoKg = pesoDouble
                 ),
                 selected = selectedVehicle == "Motorizado",
-                recommended = true,
+                recommended = false,
                 enabled = true,
                 disabledReason = null,
                 showInfoButton = true,
@@ -509,12 +518,14 @@ fun PedidoNacionalScreen(navController: NavController) {
                                         val result = response.body()
 
                                         if (response.isSuccessful && result?.success == true) {
-                                            navController.navigate("mis_pedidos") {
-                                                popUpTo("client_lobby") { inclusive = false }
-                                                launchSingleTop = true
-                                            }
+
+                                            pedidoCreadoId = result.orderId
+
+                                            showPedidoExitosoPopup = true
+
                                         } else {
-                                            errorMessage = result?.message ?: "No se pudo crear el pedido"
+                                            errorMessage =
+                                                result?.message ?: "No se pudo crear el pedido"
                                         }
                                     }
 
@@ -607,6 +618,242 @@ fun PedidoNacionalScreen(navController: NavController) {
             },
             onDismiss = { showMotorizadoTarifasPopup = false }
         )
+    }
+
+    if (showPedidoExitosoPopup) {
+        PedidoNacionalExitosoPopup(
+            onVerSeguimiento = {
+
+                val orderId = pedidoCreadoId
+
+                if (orderId == null) {
+                    errorMessage =
+                        "No se recibió el número del pedido"
+
+                    showPedidoExitosoPopup = false
+
+                    return@PedidoNacionalExitosoPopup
+                }
+
+                showPedidoExitosoPopup = false
+
+                navController.navigate(
+                    "seguimiento_cliente/$orderId"
+                ) {
+                    popUpTo("client_lobby") {
+                        inclusive = false
+                    }
+
+                    launchSingleTop = true
+                }
+            },
+            onVerMisPedidos = {
+                showPedidoExitosoPopup = false
+                navController.navigate("mis_pedidos") {
+                    popUpTo("client_lobby") { inclusive = false }
+                    launchSingleTop = true
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun PedidoNacionalExitosoPopup(
+    onVerSeguimiento: () -> Unit,
+    onVerMisPedidos: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = {},
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 22.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(CardBg)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(210.dp)
+                ) {
+                    Image(
+                        painter = painterResource(
+                            id = R.drawable.pedido_nacional_exitoso
+                        ),
+                        contentDescription = "Pedido realizado correctamente",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Transparent,
+                                        Color.Black.copy(alpha = 0.78f)
+                                    )
+                                )
+                            )
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(20.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Green
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text(
+                            text = "¡Pedido realizado!",
+                            color = Color.White,
+                            fontSize = 25.sp,
+                            fontWeight = FontWeight.Black
+                        )
+
+                        Text(
+                            text = "Tu envío nacional fue registrado correctamente.",
+                            color = Color.White.copy(alpha = 0.90f),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp)
+                ) {
+                    Text(
+                        text = "¿Qué deseas hacer ahora?",
+                        color = Dark,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "Puedes revisar el avance del envío o consultar todos tus pedidos registrados.",
+                        color = Muted,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    Button(
+                        onClick = onVerSeguimiento,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Blue,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(9.dp))
+
+                        Text(
+                            text = "Ver seguimiento",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedButton(
+                        onClick = onVerMisPedidos,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.5.dp, Border),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = CardBg,
+                            contentColor = Dark
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Inventory2,
+                            contentDescription = null,
+                            tint = Red,
+                            modifier = Modifier.size(20.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(9.dp))
+
+                        Text(
+                            text = "Ver mis pedidos",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(13.dp))
+                            .background(SoftGreenBg)
+                            .padding(11.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.NotificationsActive,
+                            contentDescription = null,
+                            tint = Green,
+                            modifier = Modifier.size(18.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Text(
+                            text = "Te notificaremos cuando cambie el estado de tu pedido.",
+                            color = Dark,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -937,22 +1184,39 @@ private fun VehicleCard(
                 )
 
                 if (showInfoButton && enabled && onInfoClick != null) {
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
 
-                    Box(
+                    Surface(
                         modifier = Modifier
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .background(Blue)
+                            .clip(RoundedCornerShape(10.dp))
                             .clickable { onInfoClick() },
-                        contentAlignment = Alignment.Center
+                        shape = RoundedCornerShape(10.dp),
+                        color = Blue
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.LocalOffer,
-                            contentDescription = "Ver tarifas",
-                            tint = Color.White,
-                            modifier = Modifier.size(15.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(
+                                horizontal = 10.dp,
+                                vertical = 7.dp
+                            ),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LocalOffer,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+
+                            Spacer(modifier = Modifier.width(5.dp))
+
+                            Text(
+                                text = "Ver tarifas",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
             }
@@ -984,23 +1248,6 @@ private fun VehicleCard(
         }
 
         Column(horizontalAlignment = Alignment.End) {
-            if (recommended && enabled) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Red)
-                        .padding(horizontal = 7.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = "Popular",
-                        color = Color.White,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-            }
 
             if (!enabled) {
                 Icon(
